@@ -1,0 +1,20 @@
+# Variante sans Docker : service systemd.
+# sudo cp gestion-todo-dag.service /etc/systemd/system/ && sudo systemctl enable --now gestion-todo-dag
+[Unit]
+Description=Graphe de taches (gestion-todo-dag)
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/gestion-todo-dag
+ExecStart=/usr/bin/node server/server.js
+Environment=PORT=3000
+Environment=HOST=127.0.0.1
+Environment=DATA_DIR=/var/lib/gestion-todo-dag
+EnvironmentFile=-/opt/gestion-todo-dag/.env
+StateDirectory=gestion-todo-dag
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

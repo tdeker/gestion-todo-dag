@@ -1,0 +1,13 @@
+{
+  "name": "gestion-todo-dag",
+  "version": "1.0.0",
+  "description": "Gestion de tâches de projet sous forme de graphe de dépendances (DAG) : tâches prêtes, responsables, échéances.",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
+  },
+  "license": "MIT"
+}

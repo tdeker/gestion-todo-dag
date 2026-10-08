@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Graphe de tâches</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <div class="eyebrow">Projet · tâches et dépendances</div>
+      <input id="projectName" type="text" aria-label="Nom du projet">
+    </div>
+    <div class="progress"><div class="bar"><i id="barFill"></i></div><span class="pct" id="pct"></span><span class="late-pill" id="lateCount"></span></div>
+  </header>
+
+  <aside>
+    <div class="panel">
+      <div class="counts" id="counts"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Prêtes à démarrer <b id="nReady"></b></h2>
+      <ul class="list" id="readyList"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>En cours <b id="nDoing"></b></h2>
+      <ul class="list" id="doingList"></ul>
+    </div>
+
+    <div class="panel" id="detail"></div>
+
+    <div class="panel">
+      <h2>Nouvelle tâche</h2>
+      <form class="add" id="addForm">
+        <input id="newTitle" type="text" placeholder="Ex. Valider le budget" autocomplete="off" aria-label="Titre de la nouvelle tâche">
+        <div class="grid2">
+          <div><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
+          <div><label class="label" for="newDue">Échéance</label><input id="newDue" type="date"></div>
+        </div>
+        <div class="row"><span></span><button class="btn primary" type="submit">Ajouter la tâche</button></div>
+      </form>
+      <datalist id="ownerList"></datalist>
+      <p class="hint" id="addHint">Si une tâche est sélectionnée, la nouvelle en dépendra.</p>
+    </div>
+
+    <div class="row">
+      <footer class="note" id="syncNote" aria-live="polite">Chargement…</footer>
+      <button class="btn danger" id="resetBtn" type="button">Recharger l'exemple</button>
+    </div>
+  </aside>
+
+  <section class="graph">
+    <div class="graph-head">
+      <div class="legend">
+        <span><i class="dot ready"></i>Prête</span>
+        <span><i class="dot doing"></i>En cours</span>
+        <span><i class="dot blocked"></i>Bloquée</span>
+        <span><i class="dot done"></i>Faite</span>
+      </div>
+      <label class="filter-who" for="whoFilter">Responsable
+        <select id="whoFilter"></select>
+      </label>
+    </div>
+    <div class="canvas" id="canvas"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  </section>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

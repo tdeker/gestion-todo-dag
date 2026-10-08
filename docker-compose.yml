@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    container_name: gestion-todo-dag
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # exposé en local seulement : passez par le reverse proxy (HTTPS)
+    environment:
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+    volumes:
+      - todo-data:/data
+
+volumes:
+  todo-data:

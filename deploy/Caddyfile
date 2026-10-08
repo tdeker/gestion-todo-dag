@@ -1,0 +1,6 @@
+# Caddy obtient et renouvelle automatiquement le certificat HTTPS (Let's Encrypt).
+# Remplacez le domaine, puis : sudo cp Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy
+taches.example.fr {
+	encode gzip
+	reverse_proxy 127.0.0.1:3000
+}
