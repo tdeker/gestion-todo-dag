@@ -94,7 +94,7 @@ Dans le dépôt : *Settings → Pages → Source : GitHub Actions*. Le workflow 
 |---|---|---|
 | `PORT` | `3000` | Port d'écoute |
 | `HOST` | `0.0.0.0` | Adresse d'écoute (`127.0.0.1` derrière un reverse proxy) |
-| `DATA_DIR` | `./data` | Dossier du fichier `project.json` |
+| `DATA_DIR` | `./data` | Dossier du fichier `projects.json` |
 | `AUTH_USER` / `AUTH_PASSWORD` | vides | Active une authentification HTTP Basic. **À définir dès que l'app est sur Internet.** |
 
 ## Sauvegarde
