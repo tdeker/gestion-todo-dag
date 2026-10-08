@@ -64,6 +64,7 @@ function validate(p) {
     if (!Array.isArray(t.deps) || !t.deps.every(Number.isInteger)) return `Dépendances invalides (tâche #${t.id}).`;
     if (t.owner != null && (typeof t.owner !== 'string' || t.owner.length > 100)) return `Responsable invalide (tâche #${t.id}).`;
     if (t.due != null && t.due !== '' && !DATE_RE.test(t.due)) return `Échéance invalide (tâche #${t.id}).`;
+    if (t.start != null && t.start !== '' && !DATE_RE.test(t.start)) return `Date de début invalide (tâche #${t.id}).`;
   }
   for (const t of p.tasks) for (const d of t.deps) if (!ids.has(d)) return `La tâche #${t.id} dépend d'une tâche inexistante (#${d}).`;
   // Détection de cycle (le graphe doit rester un DAG)
