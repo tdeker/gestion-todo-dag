@@ -500,7 +500,10 @@ document.getElementById('toastUndo').addEventListener('click', runUndo);
 const isTyping = el => !!(el && el.closest && el.closest('input, textarea, select, [contenteditable]'));
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape'){
-    if (!document.getElementById('projMenu').hidden){ closeMenu(); document.getElementById('projBtn').focus(); return; }
+    if (!document.getElementById('projMenu').hidden){
+      if (armedDel){ armedDel = null; renderMenu(); menuEl.querySelector('button')?.focus(); return; }
+      closeMenu(); document.getElementById('projBtn').focus(); return;
+    }
     if (selected && !isTyping(e.target)){ selected = null; render(); }
     return;
   }
@@ -513,44 +516,71 @@ document.addEventListener('keydown', e => {
 
 /* ---------- Menu des projets ---------- */
 const menuEl = document.getElementById('projMenu'), projBtn = document.getElementById('projBtn');
-let armedProjDelete = false;
+let armedDel = null;   // id du projet dont la suppression attend une confirmation
+const plural = n => `${n} tâche${n > 1 ? 's' : ''}`;
 function renderMenu(){
   const list = store.list.map(p => p.id === store.id ? summary(p.id, data) : p)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  if (armedDel && !list.some(p => p.id === armedDel)) armedDel = null;
   document.getElementById('projCount').textContent = list.length;
-  document.getElementById('projList').innerHTML = list.length ? list.map(p => `
-    <li><button type="button" role="menuitem" data-proj="${esc(p.id)}" ${p.id === store.id ? 'aria-current="true"' : ''}>
+  document.getElementById('projList').innerHTML = list.length ? list.map(p => p.id === armedDel ? `
+    <li class="prow confirm">
+      <span class="pconfirm">Supprimer « ${esc(p.name)} » et ${plural(p.total)} ? Action définitive.</span>
+      <span class="pconfirm-actions">
+        <button type="button" class="pc-cancel" data-pcancel>Annuler</button>
+        <button type="button" class="pc-ok" data-pdelok="${esc(p.id)}">Supprimer</button>
+      </span>
+    </li>` : `
+    <li class="prow"><button type="button" role="menuitem" class="popen" data-proj="${esc(p.id)}" ${p.id === store.id ? 'aria-current="true"' : ''}>
       <span class="pname">${esc(p.name)}</span>
       <span class="pstat">${p.done}/${p.total}</span>
       <span class="pbar"><i style="width:${p.total ? Math.round(p.done / p.total * 100) : 0}%"></i></span>
+    </button><button type="button" class="pdel" data-pdel="${esc(p.id)}" aria-label="Supprimer le projet ${esc(p.name)}" title="Supprimer ce projet">
+      <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v4M9.2 7v4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button></li>`).join('') : '<li class="empty">Aucun projet.</li>';
-  const del = menuEl.querySelector('[data-pact="delete"]');
-  del.classList.toggle('armed', armedProjDelete);
-  del.textContent = armedProjDelete
-    ? `Confirmer : supprimer « ${data.name || 'Sans nom'} » (${T().length} tâche${T().length > 1 ? 's' : ''})`
-    : 'Supprimer ce projet';
 }
 function openMenu(){
-  armedProjDelete = false; refreshList(); renderMenu();
+  armedDel = null; refreshList(); renderMenu();
   menuEl.hidden = false; projBtn.setAttribute('aria-expanded', 'true');
   (menuEl.querySelector('[aria-current]') || menuEl.querySelector('button'))?.focus();
 }
-function closeMenu(){ menuEl.hidden = true; projBtn.setAttribute('aria-expanded', 'false'); armedProjDelete = false; }
+function closeMenu(){ menuEl.hidden = true; projBtn.setAttribute('aria-expanded', 'false'); armedDel = null; }
+function armDelete(id){
+  armedDel = id; renderMenu();
+  menuEl.querySelector('[data-pdelok]')?.focus();
+}
 projBtn.addEventListener('click', () => menuEl.hidden ? openMenu() : closeMenu());
-document.addEventListener('click', e => { if (!menuEl.hidden && !e.target.closest('.proj')) closeMenu(); });
+document.addEventListener('click', e => {
+  // un élément du menu re-dessiné n'est plus dans la page : ce n'est pas un clic extérieur
+  if (!menuEl.hidden && e.target.isConnected && !e.target.closest('.proj')) closeMenu();
+});
 menuEl.addEventListener('click', async e => {
   const p = e.target.closest('[data-proj]');
   if (p){ closeMenu(); if (p.dataset.proj !== store.id) await openProject(p.dataset.proj); return; }
+  const d = e.target.closest('[data-pdel]');
+  if (d){ armDelete(d.dataset.pdel); return; }
+  if (e.target.closest('[data-pcancel]')){
+    const id = armedDel; armedDel = null; renderMenu();
+    menuEl.querySelector(`[data-pdel="${CSS.escape(id || '')}"]`)?.focus();
+    return;
+  }
+  const ok = e.target.closest('[data-pdelok]');
+  if (ok){
+    const id = ok.dataset.pdelok, current = id === store.id;
+    armedDel = null;
+    if (current) closeMenu();
+    await deleteProject(id);
+    if (!current){ renderMenu(); (menuEl.querySelector('[aria-current]') || menuEl.querySelector('button'))?.focus(); }
+    setSync('Projet supprimé.');
+    return;
+  }
   const a = e.target.closest('[data-pact]'); if (!a) return;
   if (a.dataset.pact === 'new'){
     closeMenu(); await createProject(blankProject());
     const n = document.getElementById('projectName'); n.focus(); n.select();
   }
   if (a.dataset.pact === 'sample'){ closeMenu(); await createProject(clone(SAMPLE)); }
-  if (a.dataset.pact === 'delete'){
-    if (!armedProjDelete){ armedProjDelete = true; renderMenu(); return; }
-    closeMenu(); await deleteProject(store.id);
-  }
+  if (a.dataset.pact === 'delete') armDelete(store.id);
 });
 menuEl.addEventListener('keydown', e => {
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
