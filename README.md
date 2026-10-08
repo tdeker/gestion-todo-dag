@@ -7,7 +7,7 @@ Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 - Responsable et échéance par tâche, alertes de retard (J-3, retard en jours).
 - Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.
 - Filtre par responsable (« mes tâches »).
-- **Plusieurs projets**, via le menu « Projets » : créer, ouvrir, renommer, supprimer. Le dernier projet ouvert est mémorisé.
+- **Plusieurs projets**, via le menu « Projets » : créer, ouvrir, renommer, supprimer (icône corbeille sur chaque projet de la liste, avec confirmation). Le dernier projet ouvert est mémorisé.
 - Suppression d'une tâche : la sélectionner puis touche **Suppr** (ou Retour arrière), avec possibilité d'annuler pendant 7 s (bouton ou Ctrl/Cmd + Z). Échap désélectionne.
 - Les cycles sont impossibles : ni l'interface ni l'API ne les acceptent.
 

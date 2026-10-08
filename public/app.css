@@ -126,6 +126,8 @@ footer.note{font-size:12px;color:var(--muted)}
 
 /* ---------- Axe de temps sous le graphe ---------- */
 :root{--danger-soft:#fbe4e2}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--danger-soft:#3a1a18}}
+:root[data-theme="dark"]{--danger-soft:#3a1a18}
 .mk-bad{fill:var(--danger)}
 .edge.bad{stroke:var(--danger);stroke-dasharray:5 4}
 .ax-we{fill:var(--bg);opacity:.7}
@@ -156,16 +158,25 @@ footer.note{font-size:12px;color:var(--muted)}
 .proj-menu li.empty{padding:6px 8px;color:var(--muted)}
 .proj-menu button{width:100%;text-align:left;border:0;background:transparent;border-radius:6px;padding:7px 8px;cursor:pointer;font-size:13.5px}
 .proj-menu button:hover,.proj-menu button:focus-visible{background:var(--accent-soft);outline:none}
-#projList button{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;row-gap:5px;align-items:center}
+#projList .prow{display:flex;align-items:stretch;gap:2px;border-radius:6px}
+#projList .prow:hover{background:var(--bg)}
+#projList .popen{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;row-gap:5px;align-items:center}
+#projList .pdel{flex:none;width:34px;display:grid;place-items:center;color:var(--muted);padding:0}
+#projList .pdel:hover,#projList .pdel:focus-visible{color:var(--danger);background:var(--danger-soft)}
+#projList .prow.confirm{flex-direction:column;gap:8px;padding:9px 8px;background:var(--danger-soft);border:1px solid var(--danger)}
+#projList .pconfirm{font-size:13px;color:var(--ink)}
+#projList .pconfirm-actions{display:flex;justify-content:flex-end;gap:6px}
+#projList .pconfirm-actions button{width:auto;border:1px solid var(--line);background:var(--surface);padding:5px 12px;font-weight:500}
+#projList .pconfirm-actions .pc-ok{background:var(--danger);border-color:var(--danger);color:var(--surface)}
+#projList .pconfirm-actions .pc-ok:hover,#projList .pconfirm-actions .pc-ok:focus-visible{background:var(--danger);filter:brightness(1.1)}
 #projList .pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #projList .pstat{font:500 11.5px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
 #projList .pbar{grid-column:1 / -1;height:3px;background:var(--line);border-radius:2px;overflow:hidden}
 #projList .pbar i{display:block;height:100%;background:var(--ready)}
-#projList button[aria-current=true]{background:var(--accent-soft)}
-#projList button[aria-current=true] .pname{color:var(--accent);font-weight:600}
+#projList .popen[aria-current=true]{background:var(--accent-soft)}
+#projList .popen[aria-current=true] .pname{color:var(--accent);font-weight:600}
 .proj-actions{border-top:1px solid var(--line);padding-top:4px;display:flex;flex-direction:column;gap:2px}
 .proj-actions .danger{color:var(--danger)}
-.proj-actions .danger.armed{background:var(--danger);color:var(--surface)}
 
 /* ---------- Suppression au clavier et annulation ---------- */
 .kbd-hint{font-size:12px;color:var(--muted);margin-left:auto}
