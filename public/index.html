@@ -11,9 +11,23 @@
 <body>
 <div class="app">
   <header>
-    <div>
+    <div class="proj">
       <div class="eyebrow">Projet · tâches et dépendances</div>
-      <input id="projectName" type="text" aria-label="Nom du projet">
+      <div class="proj-row">
+        <button class="btn proj-btn" id="projBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="projMenu">
+          Projets <b id="projCount"></b> <span aria-hidden="true">▾</span>
+        </button>
+        <input id="projectName" type="text" aria-label="Nom du projet" autocomplete="off">
+      </div>
+      <div class="proj-menu" id="projMenu" role="menu" aria-label="Projets" hidden>
+        <div class="proj-menu-head">Mes projets</div>
+        <ul id="projList"></ul>
+        <div class="proj-actions">
+          <button type="button" role="menuitem" data-pact="new">+ Nouveau projet</button>
+          <button type="button" role="menuitem" data-pact="sample">+ Projet d'exemple</button>
+          <button type="button" role="menuitem" class="danger" data-pact="delete">Supprimer ce projet</button>
+        </div>
+      </div>
     </div>
     <div class="progress"><div class="bar"><i id="barFill"></i></div><span class="pct" id="pct"></span><span class="late-pill" id="lateCount"></span></div>
   </header>
@@ -49,10 +63,7 @@
       <p class="hint" id="addHint">Si une tâche est sélectionnée, la nouvelle en dépendra.</p>
     </div>
 
-    <div class="row">
-      <footer class="note" id="syncNote" aria-live="polite">Chargement…</footer>
-      <button class="btn danger" id="resetBtn" type="button">Recharger l'exemple</button>
-    </div>
+    <footer class="note" id="syncNote" aria-live="polite">Chargement…</footer>
   </aside>
 
   <section class="graph">
@@ -71,6 +82,8 @@
     <div class="canvas" id="canvas"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
   </section>
 </div>
+
+<div class="toast" id="toast" role="status" hidden><span></span><button class="btn" id="toastUndo" type="button">Annuler</button></div>
 
 <script src="app.js"></script>
 </body>

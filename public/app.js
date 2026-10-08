@@ -1,4 +1,3 @@
-const KEY = 'graphe-taches-v2';
 /* ---------- Dates ---------- */
 const pad2 = n => String(n).padStart(2, '0');
 const iso = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -42,40 +41,58 @@ const mine = t => !who || (t.owner || '') === who;
 const lateDeps = t => t.due ? t.deps.map(byId).filter(d => d && d.due && d.status !== 'done' && d.due > t.due) : [];
 const LABEL = {ready:'PRÊTE', doing:'EN COURS', blocked:'BLOQUÉE', done:'FAITE'};
 
-let data = loadLocal() || clone(SAMPLE);
+const blankProject = (name = 'Nouveau projet') => ({ name, seq: 1, tasks: [] });
+let data = blankProject();
 let selected = null;
 
 function clone(o){ return JSON.parse(JSON.stringify(o)); }
+const newId = () => Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4);
+const summary = (id, d) => ({ id, name: d.name || 'Sans nom', total: d.tasks.length, done: d.tasks.filter(t => t.status === 'done').length });
 
 /* ---------- Stockage ----------
-   Mode "server" : si l'API /api/project répond, les données sont partagées sur le serveur
+   Mode "server" : si l'API /api/projects répond, les projets sont partagés sur le serveur
    (contrôle de version optimiste : en cas de conflit, la version du serveur gagne).
    Mode "local"  : sinon (ex. GitHub Pages), stockage dans le navigateur. */
-const store = { mode: 'local', version: 0, timer: null, saving: false, again: false, dirty: false };
+const LKEY = 'graphe-taches-projets-v1', CUR_KEY = 'graphe-taches-projet-courant';
+const store = { mode: 'local', id: null, version: 0, timer: null, saving: false, again: false, dirty: false, list: [] };
+let ldb = { projects: {} };
 
-function loadLocal(){ try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
+function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null; } }
+function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
+function loadLocalDb(){
+  try { const s = lsGet(LKEY); if (s) return JSON.parse(s); } catch(e){}
+  // Reprise de l'ancien format (un seul projet) s'il existe
+  let old = null; try { old = JSON.parse(lsGet('graphe-taches-v2') || 'null'); } catch(e){}
+  return { projects: { [newId()]: old || clone(SAMPLE) } };
+}
 function setSync(text, warn){
   const el = document.getElementById('syncNote');
   if (el){ el.textContent = text; el.style.color = warn ? 'var(--doing)' : ''; }
 }
 function save(){
-  if (store.mode !== 'server'){ try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){} return; }
+  if (store.mode !== 'server'){ ldb.projects[store.id] = data; lsSet(LKEY, JSON.stringify(ldb)); renderMenu(); return; }
   store.dirty = true;
   setSync('Enregistrement…');
   clearTimeout(store.timer);
   store.timer = setTimeout(pushServer, 500);
+  renderMenu();
 }
 async function pushServer(){
   if (store.saving){ store.again = true; return; }
   store.saving = true;
+  const id = store.id;
   try {
-    const r = await fetch('api/project', {
+    const r = await fetch('api/projects/' + id, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', 'If-Match': String(store.version) },
       body: JSON.stringify(data)
     });
     const j = await r.json().catch(() => ({}));
-    if (r.status === 409){
+    if (store.id !== id) return;                      // on a changé de projet entre-temps
+    if (r.status === 404){
+      store.dirty = false; store.again = false;
+      await projectGone();
+    } else if (r.status === 409){
       store.version = j.version; data = j.data; store.dirty = false; store.again = false;
       refreshAll();
       setSync("Modifié entre-temps par quelqu'un d'autre : version du serveur rechargée.", true);
@@ -95,37 +112,107 @@ async function pushServer(){
     if (store.again){ store.again = false; pushServer(); }
   }
 }
+async function flush(){
+  if (store.mode === 'server' && store.dirty){ clearTimeout(store.timer); await pushServer(); }
+}
+async function refreshList(){
+  if (store.mode === 'server'){
+    try { const r = await fetch('api/projects', { cache: 'no-store' }); if (r.ok) store.list = await r.json(); } catch(e){}
+  } else {
+    store.list = Object.entries(ldb.projects).map(([id, d]) => summary(id, d));
+  }
+  renderMenu();
+}
+async function openProject(id){
+  await flush();
+  clearTimeout(store.timer);
+  store.dirty = false; store.again = false;
+  if (store.mode === 'server'){
+    const r = await fetch('api/projects/' + id, { cache: 'no-store' });
+    if (!r.ok) throw new Error('Projet introuvable');
+    const j = await r.json();
+    store.version = j.version; data = j.data;
+    setSync('Enregistré sur le serveur');
+  } else {
+    data = ldb.projects[id];
+  }
+  store.id = id; selected = null; who = ''; undo = null; hideToast();
+  lsSet(CUR_KEY, id);
+  refreshAll();
+}
+async function createProject(d){
+  let id;
+  if (store.mode === 'server'){
+    const r = await fetch('api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok){ setSync('Création impossible : ' + (j.error || 'HTTP ' + r.status), true); return; }
+    id = j.id;
+  } else {
+    id = newId(); ldb.projects[id] = d; lsSet(LKEY, JSON.stringify(ldb));
+  }
+  await openProject(id);
+  await refreshList();
+}
+async function deleteProject(id){
+  if (store.mode === 'server'){
+    const r = await fetch('api/projects/' + id, { method: 'DELETE' });
+    if (!r.ok && r.status !== 404){ setSync('Suppression impossible (HTTP ' + r.status + ').', true); return; }
+    if (id === store.id){ store.dirty = false; clearTimeout(store.timer); }
+  } else {
+    delete ldb.projects[id]; lsSet(LKEY, JSON.stringify(ldb));
+  }
+  await refreshList();
+  if (id === store.id){
+    if (store.list.length) await openProject(store.list[0].id);
+    else await createProject(blankProject());
+  }
+}
+// Le projet courant a été supprimé par quelqu'un d'autre
+async function projectGone(){
+  await refreshList();
+  if (store.list.length) await openProject(store.list[0].id); else await createProject(blankProject());
+  setSync("Le projet que vous consultiez a été supprimé par quelqu'un d'autre.", true);
+}
 // Récupère les modifications des autres utilisateurs (sauf pendant une saisie)
 async function poll(){
   if (store.mode !== 'server' || store.dirty || store.saving || document.hidden) return;
+  refreshList();
   if (document.activeElement && document.activeElement.matches('input, select')) return;
+  const id = store.id;
   try {
-    const r = await fetch('api/project', { cache: 'no-store' });
+    const r = await fetch('api/projects/' + id, { cache: 'no-store' });
+    if (store.id !== id || store.dirty) return;
+    if (r.status === 404) return projectGone();
     if (!r.ok) return;
     const j = await r.json();
-    if (j.version !== store.version && j.data && !store.dirty){ store.version = j.version; data = j.data; refreshAll(); }
+    if (j.version !== store.version && j.data){ store.version = j.version; data = j.data; refreshAll(); }
   } catch(e){}
 }
 function refreshAll(){
   if (selected && !byId(selected)) selected = null;
   document.getElementById('projectName').value = data.name || '';
   render();
+  renderMenu();
 }
 async function boot(){
   try {
-    const r = await fetch('api/project', { cache: 'no-store' });
+    const r = await fetch('api/projects', { cache: 'no-store' });
     if (!r.ok) throw new Error();
-    const j = await r.json();
     store.mode = 'server';
-    store.version = j.version;
-    if (j.data) data = j.data; else save();   // serveur vide : on l'initialise avec l'exemple
-    setSync('Enregistré sur le serveur');
+    store.list = await r.json();
     setInterval(poll, 10000);
     document.addEventListener('visibilitychange', poll);
   } catch(e){
+    store.mode = 'local';
+    ldb = loadLocalDb();
+    lsSet(LKEY, JSON.stringify(ldb));
+    await refreshList();
     setSync('Enregistré dans ce navigateur uniquement.');
   }
-  refreshAll();
+  if (!store.list.length){ await createProject(clone(SAMPLE)); return; }   // serveur vide : projet d'exemple
+  const last = lsGet(CUR_KEY);
+  await openProject(store.list.some(p => p.id === last) ? last : store.list[0].id);
+  if (store.mode === 'local') setSync('Enregistré dans ce navigateur uniquement.');
 }
 const T = () => data.tasks;
 const byId = id => T().find(t => t.id === id);
@@ -304,7 +391,6 @@ function renderSide(){
   renderDetail();
 }
 
-let armedDelete = false;
 function renderDetail(){
   const el = document.getElementById('detail');
   const t = selected && byId(selected);
@@ -338,7 +424,7 @@ function renderDetail(){
     </select>
     <div class="label">Débloque</div>
     <div class="chips">${kids.length ? kids.map(k => `<span class="chip" style="padding-right:9px"><i class="dot ${state(k)}"></i><span data-sel="${k.id}">${esc(k.title)}</span></span>`).join('') : '<span class="hint">Aucune tâche ne dépend de celle-ci.</span>'}</div>
-    <div class="row"><button class="btn" data-act="deselect">Fermer</button><button class="btn danger ${armedDelete ? 'armed' : ''}" data-act="delete">${armedDelete ? 'Confirmer la suppression' : 'Supprimer'}</button></div>`;
+    <div class="row"><button class="btn" data-act="deselect">Fermer</button><span class="kbd-hint">ou touche <kbd>Suppr</kbd></span><button class="btn danger" data-act="delete">Supprimer</button></div>`;
 }
 
 function render(){ drawGraph(); renderSide(); }
@@ -346,27 +432,22 @@ function commit(){ save(); render(); }
 
 /* ---------- Événements ---------- */
 document.getElementById('g').addEventListener('click', e => {
-  const n = e.target.closest('.node'); armedDelete = false;
+  const n = e.target.closest('.node');
   if (n) select(+n.dataset.id); else { selected = null; render(); }
 });
 document.getElementById('g').addEventListener('keydown', e => {
   const n = e.target.closest('.node'); if (n && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); select(+n.dataset.id); }
 });
 document.querySelector('aside').addEventListener('click', e => {
-  const sel = e.target.closest('[data-sel]'); if (sel){ selected = null; armedDelete = false; select(+sel.dataset.sel); return; }
+  const sel = e.target.closest('[data-sel]'); if (sel){ selected = null; select(+sel.dataset.sel); return; }
   const st = e.target.closest('[data-st]'); if (st && !st.disabled){ setStatus(selected, st.dataset.st); return; }
   const un = e.target.closest('[data-undep]'); if (un){ const t = byId(selected); t.deps = t.deps.filter(d => d !== +un.dataset.undep); commit(); return; }
   const a = e.target.closest('[data-act]'); if (!a) return;
   const act = a.dataset.act;
   if (act === 'start') setStatus(+a.dataset.id, 'doing');
   if (act === 'finish') setStatus(+a.dataset.id, 'done');
-  if (act === 'deselect'){ selected = null; armedDelete = false; render(); }
-  if (act === 'delete'){
-    if (!armedDelete){ armedDelete = true; renderDetail(); return; }
-    data.tasks = T().filter(t => t.id !== selected);
-    T().forEach(t => t.deps = t.deps.filter(d => d !== selected));
-    selected = null; armedDelete = false; commit();
-  }
+  if (act === 'deselect'){ selected = null; render(); }
+  if (act === 'delete') deleteTask(selected);
 });
 document.querySelector('aside').addEventListener('change', e => {
   if (e.target.id === 'addDep' && e.target.value){ byId(selected).deps.push(+e.target.value); commit(); }
@@ -383,19 +464,102 @@ document.getElementById('addForm').addEventListener('submit', e => {
   const id = data.seq++;
   const ownEl = document.getElementById('newOwner'), dueEl = document.getElementById('newDue');
   T().push({id, title, status:'todo', deps: selected && byId(selected) ? [selected] : [], owner: ownEl.value.trim(), due: dueEl.value});
-  inp.value = ''; dueEl.value = ''; selected = id; armedDelete = false; commit();
+  inp.value = ''; dueEl.value = ''; selected = id; commit();
 });
 document.getElementById('whoFilter').addEventListener('change', e => { who = e.target.value; render(); });
-const nameEl = document.getElementById('projectName');
-nameEl.value = data.name;
-nameEl.addEventListener('input', () => { data.name = nameEl.value; save(); });
-let armedReset = false;
-const resetBtn = document.getElementById('resetBtn');
-resetBtn.addEventListener('click', () => {
-  if (!armedReset){ armedReset = true; resetBtn.textContent = 'Confirmer : tout remplacer'; resetBtn.classList.add('armed');
-    setTimeout(() => { armedReset = false; resetBtn.textContent = "Recharger l'exemple"; resetBtn.classList.remove('armed'); }, 4000); return; }
-  data = clone(SAMPLE); selected = null; nameEl.value = data.name; armedReset = false;
-  resetBtn.textContent = "Recharger l'exemple"; resetBtn.classList.remove('armed'); commit();
+/* ---------- Suppression d'une tâche (bouton ou touche Suppr), avec annulation ---------- */
+let undo = null, toastTimer = null;
+function deleteTask(id){
+  const t = byId(id); if (!t) return;
+  const saved = clone(t), pid = store.id;
+  const dependents = T().filter(x => x.deps.includes(id)).map(x => x.id);
+  data.tasks = T().filter(x => x.id !== id);
+  T().forEach(x => x.deps = x.deps.filter(d => d !== id));
+  if (selected === id) selected = null;
+  commit();
+  undo = () => {
+    if (store.id !== pid || byId(id)) return;
+    saved.deps = saved.deps.filter(d => byId(d));
+    T().push(saved);
+    dependents.forEach(x => { const k = byId(x); if (k && !k.deps.includes(id)) k.deps.push(id); });
+    selected = id; commit();
+  };
+  showToast(`« ${t.title} » supprimée.`);
+}
+function showToast(text){
+  const el = document.getElementById('toast');
+  el.querySelector('span').textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 7000);
+}
+function hideToast(){ const el = document.getElementById('toast'); if (el) el.hidden = true; undo = null; }
+function runUndo(){ const f = undo; hideToast(); if (f) f(); }
+document.getElementById('toastUndo').addEventListener('click', runUndo);
+
+const isTyping = el => !!(el && el.closest && el.closest('input, textarea, select, [contenteditable]'));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){
+    if (!document.getElementById('projMenu').hidden){ closeMenu(); document.getElementById('projBtn').focus(); return; }
+    if (selected && !isTyping(e.target)){ selected = null; render(); }
+    return;
+  }
+  if (isTyping(e.target) || e.altKey) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && selected){
+    e.preventDefault(); deleteTask(selected); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && undo){ e.preventDefault(); runUndo(); }
 });
+
+/* ---------- Menu des projets ---------- */
+const menuEl = document.getElementById('projMenu'), projBtn = document.getElementById('projBtn');
+let armedProjDelete = false;
+function renderMenu(){
+  const list = store.list.map(p => p.id === store.id ? summary(p.id, data) : p)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  document.getElementById('projCount').textContent = list.length;
+  document.getElementById('projList').innerHTML = list.length ? list.map(p => `
+    <li><button type="button" role="menuitem" data-proj="${esc(p.id)}" ${p.id === store.id ? 'aria-current="true"' : ''}>
+      <span class="pname">${esc(p.name)}</span>
+      <span class="pstat">${p.done}/${p.total}</span>
+      <span class="pbar"><i style="width:${p.total ? Math.round(p.done / p.total * 100) : 0}%"></i></span>
+    </button></li>`).join('') : '<li class="empty">Aucun projet.</li>';
+  const del = menuEl.querySelector('[data-pact="delete"]');
+  del.classList.toggle('armed', armedProjDelete);
+  del.textContent = armedProjDelete
+    ? `Confirmer : supprimer « ${data.name || 'Sans nom'} » (${T().length} tâche${T().length > 1 ? 's' : ''})`
+    : 'Supprimer ce projet';
+}
+function openMenu(){
+  armedProjDelete = false; refreshList(); renderMenu();
+  menuEl.hidden = false; projBtn.setAttribute('aria-expanded', 'true');
+  (menuEl.querySelector('[aria-current]') || menuEl.querySelector('button'))?.focus();
+}
+function closeMenu(){ menuEl.hidden = true; projBtn.setAttribute('aria-expanded', 'false'); armedProjDelete = false; }
+projBtn.addEventListener('click', () => menuEl.hidden ? openMenu() : closeMenu());
+document.addEventListener('click', e => { if (!menuEl.hidden && !e.target.closest('.proj')) closeMenu(); });
+menuEl.addEventListener('click', async e => {
+  const p = e.target.closest('[data-proj]');
+  if (p){ closeMenu(); if (p.dataset.proj !== store.id) await openProject(p.dataset.proj); return; }
+  const a = e.target.closest('[data-pact]'); if (!a) return;
+  if (a.dataset.pact === 'new'){
+    closeMenu(); await createProject(blankProject());
+    const n = document.getElementById('projectName'); n.focus(); n.select();
+  }
+  if (a.dataset.pact === 'sample'){ closeMenu(); await createProject(clone(SAMPLE)); }
+  if (a.dataset.pact === 'delete'){
+    if (!armedProjDelete){ armedProjDelete = true; renderMenu(); return; }
+    closeMenu(); await deleteProject(store.id);
+  }
+});
+menuEl.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...menuEl.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+  items[(i + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length].focus();
+});
+
+const nameEl = document.getElementById('projectName');
+nameEl.addEventListener('input', () => { data.name = nameEl.value; save(); });
 
 boot();

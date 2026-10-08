@@ -7,16 +7,18 @@ Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 - Responsable et échéance par tâche, alertes de retard (J-3, retard en jours).
 - Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.
 - Filtre par responsable (« mes tâches »).
+- **Plusieurs projets**, via le menu « Projets » : créer, ouvrir, renommer, supprimer. Le dernier projet ouvert est mémorisé.
+- Suppression d'une tâche : la sélectionner puis touche **Suppr** (ou Retour arrière), avec possibilité d'annuler pendant 7 s (bouton ou Ctrl/Cmd + Z). Échap désélectionne.
 - Les cycles sont impossibles : ni l'interface ni l'API ne les acceptent.
 
 ## Deux modes de fonctionnement
 
 | Mode | Quand | Données |
 |---|---|---|
-| **Serveur** | L'app est servie par `server/server.js` | Partagées entre tous les utilisateurs, fichier `data/project.json` |
+| **Serveur** | L'app est servie par `server/server.js` | Partagées entre tous les utilisateurs, fichier `data/projects.json` |
 | **Navigateur** | Fichiers statiques seuls (GitHub Pages, ouverture de `public/index.html`) | Stockées dans le navigateur de chaque personne, non partagées |
 
-L'application détecte le mode toute seule au démarrage (présence de l'API `/api/project`). Le mode actif est indiqué en bas du panneau de gauche.
+L'application détecte le mode toute seule au démarrage (présence de l'API `/api/projects`). Le mode actif est indiqué en bas du panneau de gauche.
 
 ## Lancer en local
 
@@ -101,24 +103,28 @@ Toutes les données tiennent dans un seul fichier JSON :
 
 ```bash
 # Docker
-docker cp gestion-todo-dag:/data/project.json ./sauvegarde-$(date +%F).json
+docker cp gestion-todo-dag:/data/projects.json ./sauvegarde-$(date +%F).json
 # systemd
-cp /var/lib/gestion-todo-dag/project.json ./sauvegarde-$(date +%F).json
+cp /var/lib/gestion-todo-dag/projects.json ./sauvegarde-$(date +%F).json
 ```
 
 ## API
 
 | Méthode | Route | Description |
 |---|---|---|
-| `GET` | `/api/project` | `{ version, updatedAt, data }` |
-| `PUT` | `/api/project` | Remplace le projet. En-tête `If-Match: <version>` obligatoire ; `409` avec la version courante en cas de conflit, `422` si les données sont invalides (dont cycle). |
+| `GET` | `/api/projects` | Liste : `[{ id, name, version, updatedAt, total, done }]` |
+| `POST` | `/api/projects` | Crée un projet (`{ name, seq, tasks }`) → `201 { id, version }` |
+| `GET` | `/api/projects/:id` | `{ id, version, updatedAt, data }` |
+| `PUT` | `/api/projects/:id` | Remplace le projet. En-tête `If-Match: <version>` obligatoire ; `409` avec la version courante en cas de conflit, `422` si les données sont invalides (dont cycle). |
+| `DELETE` | `/api/projects/:id` | Supprime le projet → `204` |
 | `GET` | `/api/health` | Sonde de disponibilité (sans authentification) |
 
 Les modifications simultanées sont gérées par version : si deux personnes enregistrent en même temps, la seconde reçoit la version du serveur et l'interface l'affiche. Les autres utilisateurs voient les changements en moins de 10 secondes.
 
+Mise à jour depuis la version mono-projet : au premier démarrage, l'ancien `project.json` est repris automatiquement comme premier projet (le fichier d'origine est conservé).
+
 ## Limites actuelles
 
-- Un seul projet par instance (lancer plusieurs conteneurs pour plusieurs projets).
 - Un seul compte partagé (authentification Basic).
 - Pas d'historique des modifications : pensez aux sauvegardes.
 

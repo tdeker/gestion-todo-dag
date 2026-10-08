@@ -1,17 +1,19 @@
 // Serveur minimal, sans dépendance : sert l'application (public/) et une API JSON
-// qui stocke le projet dans un fichier. Node.js 20+.
+// qui stocke les projets dans un fichier. Node.js 20+.
 import http from 'node:http';
 import { readFile, writeFile, rename, mkdir, stat } from 'node:fs/promises';
 import { join, normalize, extname, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes } from 'node:crypto';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PUBLIC_DIR = join(ROOT, 'public');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 const DATA_DIR = resolve(process.env.DATA_DIR || join(ROOT, 'data'));
-const DATA_FILE = join(DATA_DIR, 'project.json');
+const DATA_FILE = join(DATA_DIR, 'projects.json');
+const LEGACY_FILE = join(DATA_DIR, 'project.json'); // ancien format : un seul projet
+const MAX_PROJECTS = 500;
 const AUTH_USER = process.env.AUTH_USER || '';
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD || '';
 const MAX_BODY = 1024 * 1024; // 1 Mo
@@ -22,17 +24,33 @@ const TYPES = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.webmanifest': 'application/manifest+json'
 };
 
-/* ---------- Données ---------- */
-let state = { version: 0, data: null };
+/* ---------- Données ----------
+   { projects: { <id>: { version, updatedAt, data } } } */
+let db = { projects: {} };
+const newId = () => randomBytes(6).toString('hex');
+const ID_RE = /^[a-z0-9]{6,32}$/;
 
-async function loadState() {
+async function loadDb() {
   try {
-    state = JSON.parse(await readFile(DATA_FILE, 'utf8'));
-    console.log(`Projet chargé (version ${state.version}) depuis ${DATA_FILE}`);
+    db = JSON.parse(await readFile(DATA_FILE, 'utf8'));
+    console.log(`${Object.keys(db.projects).length} projet(s) chargé(s) depuis ${DATA_FILE}`);
+    return;
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
-    console.log(`Aucun projet existant : ${DATA_FILE} sera créé au premier enregistrement.`);
   }
+  // Reprise de l'ancien fichier project.json (version mono-projet)
+  try {
+    const old = JSON.parse(await readFile(LEGACY_FILE, 'utf8'));
+    if (old && old.data) {
+      db.projects[newId()] = { version: old.version || 1, updatedAt: old.updatedAt || new Date().toISOString(), data: old.data };
+      await persist();
+      console.log(`Ancien projet repris depuis ${LEGACY_FILE}.`);
+      return;
+    }
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+  console.log(`Aucun projet existant : ${DATA_FILE} sera créé au premier enregistrement.`);
 }
 
 // Écriture atomique : fichier temporaire puis renommage
@@ -41,7 +59,7 @@ function persist() {
   writing = writing.then(async () => {
     await mkdir(DATA_DIR, { recursive: true });
     const tmp = DATA_FILE + '.tmp';
-    await writeFile(tmp, JSON.stringify(state, null, 2));
+    await writeFile(tmp, JSON.stringify(db, null, 2));
     await rename(tmp, DATA_FILE);
   });
   return writing;
@@ -118,26 +136,65 @@ function readBody(req) {
   });
 }
 
+async function readProject(req) {
+  let payload;
+  try { payload = JSON.parse(await readBody(req)); }
+  catch (e) { return { err: [e.status || 400, e.status ? e.message : 'JSON invalide.'] }; }
+  const err = validate(payload);
+  return err ? { err: [422, err] } : { payload };
+}
+
 async function api(req, res, path) {
   if (path === '/api/health') return send(res, 200, { ok: true });
-  if (path !== '/api/project') return send(res, 404, { error: 'Route inconnue.' });
 
-  if (req.method === 'GET') return send(res, 200, state, { 'Cache-Control': 'no-store' });
+  if (path === '/api/projects') {
+    if (req.method === 'GET') {
+      const list = Object.entries(db.projects).map(([id, p]) => ({
+        id, name: p.data.name || 'Sans nom', version: p.version, updatedAt: p.updatedAt,
+        total: p.data.tasks.length, done: p.data.tasks.filter(t => t.status === 'done').length
+      }));
+      return send(res, 200, list, { 'Cache-Control': 'no-store' });
+    }
+    if (req.method === 'POST') {
+      if (Object.keys(db.projects).length >= MAX_PROJECTS) return send(res, 422, { error: `Limite de ${MAX_PROJECTS} projets atteinte.` });
+      const { payload, err } = await readProject(req);
+      if (err) return send(res, err[0], { error: err[1] });
+      const id = newId();
+      db.projects[id] = { version: 1, updatedAt: new Date().toISOString(), data: payload };
+      await persist();
+      return send(res, 201, { id, version: 1 });
+    }
+    return send(res, 405, { error: 'Méthode non autorisée.' }, { Allow: 'GET, POST' });
+  }
+
+  const m = path.match(/^\/api\/projects\/([^/]+)$/);
+  if (!m) return send(res, 404, { error: 'Route inconnue.' });
+  const id = m[1];
+  if (!ID_RE.test(id) || !Object.hasOwn(db.projects, id)) return send(res, 404, { error: 'Projet introuvable.' });
+  const p = db.projects[id];
+
+  if (req.method === 'GET') return send(res, 200, { id, ...p }, { 'Cache-Control': 'no-store' });
 
   if (req.method === 'PUT') {
     const expected = Number(req.headers['if-match']);
     if (!Number.isFinite(expected)) return send(res, 428, { error: 'En-tête If-Match (version) requis.' });
-    if (expected !== state.version) return send(res, 409, state);
-    let payload;
-    try { payload = JSON.parse(await readBody(req)); }
-    catch (e) { return send(res, e.status || 400, { error: e.status ? e.message : 'JSON invalide.' }); }
-    const err = validate(payload);
-    if (err) return send(res, 422, { error: err });
-    state = { version: state.version + 1, updatedAt: new Date().toISOString(), data: payload };
+    if (expected !== p.version) return send(res, 409, { id, ...p });
+    const { payload, err } = await readProject(req);
+    if (err) return send(res, err[0], { error: err[1] });
+    // Re-vérification après lecture du corps : une autre requête a pu passer entre-temps
+    if (!Object.hasOwn(db.projects, id)) return send(res, 404, { error: 'Projet introuvable.' });
+    if (db.projects[id].version !== expected) return send(res, 409, { id, ...db.projects[id] });
+    db.projects[id] = { version: expected + 1, updatedAt: new Date().toISOString(), data: payload };
     await persist();
-    return send(res, 200, { version: state.version });
+    return send(res, 200, { version: db.projects[id].version });
   }
-  return send(res, 405, { error: 'Méthode non autorisée.' }, { Allow: 'GET, PUT' });
+
+  if (req.method === 'DELETE') {
+    delete db.projects[id];
+    await persist();
+    return send(res, 204, '');
+  }
+  return send(res, 405, { error: 'Méthode non autorisée.' }, { Allow: 'GET, PUT, DELETE' });
 }
 
 async function serveStatic(req, res, path) {
@@ -173,7 +230,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-await loadState();
+await loadDb();
 server.listen(PORT, HOST, () => {
   console.log(`Graphe de tâches : http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`);
   if (!AUTH_USER) console.warn('⚠ Pas d\'authentification (AUTH_USER / AUTH_PASSWORD non définis).');
