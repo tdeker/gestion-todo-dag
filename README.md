@@ -2,7 +2,7 @@
 
 Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 
-- Vue graphe : les tâches sont rangées en colonnes selon leur profondeur de dépendance.
+- Vue graphe posée sur un axe de temps : le bord droit de chaque activité tombe sur son échéance, avec la date du jour repérée. Les activités qui se chevauchent sont empilées, celles sans échéance sont placées à droite.
 - Tâches **prêtes** (tous les prérequis faits) mises en évidence, tâches **bloquées** en pointillés.
 - Responsable et échéance par tâche, alertes de retard (J-3, retard en jours).
 - Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.

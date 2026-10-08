@@ -17,6 +17,7 @@
   --blocked:#7a8195; --blocked-bg:#1e222d; --done:#878ea0; --done-bg:#1a1e27; --edge:#3f4657; --edge-hot:#b9c0d0; --danger:#ff7b70;
   color-scheme:dark }
 
+*,*::before,*::after{box-sizing:border-box}
 html,body{height:100%}
 body{background:var(--bg);color:var(--ink);font:14px/1.45 var(--f-ui);padding-inline:16px}
 .app{max-width:1440px;margin:0 auto;padding-block:20px 32px;display:grid;gap:16px;
@@ -121,3 +122,21 @@ svg.filter .node.other{opacity:.22}
 .filter-who select{width:auto;padding:4px 8px}
 .mk-ok{fill:var(--edge)} .mk-wait{fill:var(--edge-hot)} .mk-hi{fill:var(--accent)}
 footer.note{font-size:12px;color:var(--muted)}
+
+/* ---------- Axe de temps sous le graphe ---------- */
+:root{--danger-soft:#fbe4e2}
+.mk-bad{fill:var(--danger)}
+.edge.bad{stroke:var(--danger);stroke-dasharray:5 4}
+.ax-we{fill:var(--bg);opacity:.7}
+.ax-today{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:3 3}
+.ax-todaylbl{font:600 10.5px var(--f-mono);fill:var(--accent);letter-spacing:.04em}
+.ax-none{fill:var(--muted)}
+.ax-guide{stroke:var(--accent);stroke-width:1;stroke-dasharray:2 3}
+.ax-line{stroke:var(--ink);stroke-width:1.2;opacity:.6}
+.ax-tick{stroke:var(--line);stroke-width:1}
+.ax-day{font:500 10.5px var(--f-mono);fill:var(--muted);font-variant-numeric:tabular-nums}
+.ax-day.we{opacity:.55}
+.ax-day.now{fill:var(--accent);font-weight:600}
+.ax-month{font:600 11.5px var(--f-ui);fill:var(--ink);text-transform:capitalize}
+.ax-sep{stroke:var(--line);stroke-dasharray:4 4}
+.ln-bad{display:inline-block;width:16px;border-top:2px dashed var(--danger)}

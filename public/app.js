@@ -144,36 +144,65 @@ const children = id => T().filter(t => t.deps.includes(id));
 // Ajouter "dep" comme prérequis de "id" crée un cycle si dep dépend déjà (transitivement) de id
 const wouldCycle = (id, dep) => id === dep || ancestors(dep).has(id);
 
-/* ---------- Mise en page du graphe ---------- */
-const NW = 210, NH = 84, GX = 64, GY = 18, PAD = 28;
+/* ---------- Mise en page du graphe ----------
+   Axe horizontal = temps : le bord droit de chaque activité tombe sur son échéance.
+   Les activités qui se chevauchent dans le temps sont empilées ; celles sans échéance vont à droite. */
+const NW = 196, NH = 84, GY = 14, PAD = 24, TOP = 28, DAY = 30;
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
 function layout(){
-  const rank = {};
-  const r = id => { if (rank[id] != null) return rank[id]; rank[id] = 0;
-    const t = byId(id); let m = 0; for (const d of t.deps) if (byId(d)) m = Math.max(m, r(d) + 1); return rank[id] = m; };
-  T().forEach(t => r(t.id));
-  const cols = [];
-  T().forEach(t => (cols[rank[t.id]] ||= []).push(t.id));
-  const pos = {};
-  const idx = () => cols.forEach(c => c.forEach((id, i) => pos[id] = i));
-  idx();
-  const bary = (ids, fn) => { const v = ids.map(x => pos[x]).filter(x => x != null); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
-  for (let pass = 0; pass < 4; pass++){
-    for (let c = 1; c < cols.length; c++){
-      cols[c].sort((a,b) => (bary(byId(a).deps) ?? pos[a]) - (bary(byId(b).deps) ?? pos[b])); idx();
-    }
-    for (let c = cols.length - 2; c >= 0; c--){
-      cols[c].sort((a,b) => (bary(children(a).map(t=>t.id)) ?? pos[a]) - (bary(children(b).map(t=>t.id)) ?? pos[b])); idx();
-    }
+  const dated = T().filter(t => t.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
+  const undated = T().filter(t => !t.due);
+  let min = iso(TODAY), max = iso(TODAY);
+  dated.forEach(t => { if (t.due < min) min = t.due; if (t.due > max) max = t.due; });
+  min = addDays(min, -Math.ceil(NW / DAY) - 1); max = addDays(max, 3);
+  const X = s => PAD + (diffDays(min, s) + 1) * DAY;      // fin de la journée s
+  const laneEnd = [], laneOf = {}, xy = {};
+  for (const t of dated){
+    const right = X(t.due), left = right - NW;
+    const free = l => laneEnd[l] == null || laneEnd[l] + 10 <= left;
+    // on garde si possible la ligne d'un prérequis, pour des flèches plus droites
+    let lane = t.deps.map(d => laneOf[d]).find(l => l != null && free(l));
+    if (lane == null){ lane = 0; while (!free(lane)) lane++; }
+    laneEnd[lane] = right; laneOf[t.id] = lane;
+    xy[t.id] = {x: left, y: TOP + lane * (NH + GY)};
   }
-  const maxRows = Math.max(1, ...cols.map(c => c.length));
-  const H = maxRows * (NH + GY) - GY;
-  const xy = {};
-  cols.forEach((c, ci) => { const off = (H - (c.length * (NH + GY) - GY)) / 2;
-    c.forEach((id, i) => xy[id] = {x: PAD + ci * (NW + GX), y: PAD + off + i * (NH + GY)}); });
-  return {xy, w: PAD*2 + cols.length * (NW + GX) - GX, h: PAD*2 + H};
+  const axisEnd = X(max) + PAD;
+  const ux = undated.length ? axisEnd + 48 : null;
+  undated.forEach((t, i) => xy[t.id] = {x: ux, y: TOP + i * (NH + GY)});
+  const rows = Math.max(laneEnd.length, undated.length, 1);
+  const axisY = TOP + rows * (NH + GY) - GY + 18;
+  return {xy, min, max, X, axisY, axisEnd, ux, w: ux != null ? ux + NW + PAD : axisEnd, h: axisY + 50};
 }
 
-function wrap(text, max = 27){
+function drawAxis(L){
+  const {min, max, X, axisY, axisEnd, ux} = L;
+  let out = '';
+  const days = diffDays(min, max) + 1;
+  for (let i = 0; i < days; i++){
+    const d = addDays(min, i), dt = parse(d), x0 = X(d) - DAY, wd = dt.getDay();
+    if (wd === 0 || wd === 6) out += `<rect class="ax-we" x="${x0}" y="${TOP - 10}" width="${DAY}" height="${axisY - TOP + 10}"/>`;
+  }
+  const tx = X(iso(TODAY)) - DAY / 2;
+  out += `<line class="ax-today" x1="${tx}" x2="${tx}" y1="${TOP - 8}" y2="${axisY}"/>
+    <text class="ax-todaylbl" x="${tx}" y="${TOP - 13}" text-anchor="middle">Aujourd'hui</text>`;
+  if (selected){
+    const t = byId(selected), p = L.xy[selected];
+    if (t && t.due && p) out += `<line class="ax-guide" x1="${p.x + NW}" x2="${p.x + NW}" y1="${p.y + NH}" y2="${axisY}"/>`;
+  }
+  out += `<line class="ax-line" x1="${PAD}" x2="${axisEnd - PAD / 2}" y1="${axisY}" y2="${axisY}"/>`;
+  for (let i = 0; i < days; i++){
+    const d = addDays(min, i), dt = parse(d), xc = X(d) - DAY / 2, first = dt.getDate() === 1 || i === 0;
+    out += `<line class="ax-tick" x1="${X(d) - DAY}" x2="${X(d) - DAY}" y1="${axisY}" y2="${axisY + (first ? 30 : 5)}"/>`;
+    out += `<text class="ax-day ${dt.getDay() % 6 === 0 ? 'we' : ''} ${d === iso(TODAY) ? 'now' : ''}" x="${xc}" y="${axisY + 17}" text-anchor="middle">${dt.getDate()}</text>`;
+    if (first) out += `<text class="ax-month" x="${X(d) - DAY + 5}" y="${axisY + 40}">${esc(dt.toLocaleDateString('fr-FR', {month:'long', year:'numeric'}))}</text>`;
+  }
+  if (ux != null) out += `<line class="ax-sep" x1="${ux - 24}" x2="${ux - 24}" y1="${TOP - 10}" y2="${axisY}"/>
+    <text class="ax-todaylbl ax-none" x="${ux}" y="${TOP - 13}">Sans échéance</text>`;
+  return out;
+}
+
+function wrap(text, max = 25){
   const words = text.split(/\s+/), lines = [];
   let cur = '';
   for (const w of words){
@@ -188,20 +217,21 @@ function drawGraph(){
   const svg = document.getElementById('g');
   if (!T().length){ svg.setAttribute('width', 360); svg.setAttribute('height', 120);
     svg.innerHTML = `<text x="28" y="60" class="title" style="fill:var(--muted);font:14px var(--f-ui)">Aucune tâche. Ajoutez-en une à gauche.</text>`; return; }
-  const {xy, w, h} = layout();
+  const L = layout(), {xy, w, h} = L;
   const anc = selected ? ancestors(selected) : new Set(), desc = selected ? descendants(selected) : new Set();
   const chain = selected ? new Set([selected, ...anc, ...desc]) : null;
   svg.setAttribute('width', w); svg.setAttribute('height', h); svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
   svg.classList.toggle('focus', !!chain);
   svg.classList.toggle('filter', !!who);
-  let out = `<defs>${['ok','wait','hi'].map(k => `<marker id="m-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-${k}"/></marker>`).join('')}</defs>`;
+  let out = `<defs>${['ok','wait','hi','bad'].map(k => `<marker id="m-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-${k}"/></marker>`).join('')}</defs>` + drawAxis(L);
   for (const t of T()) for (const d of t.deps){
     const a = xy[d], b = xy[t.id]; if (!a || !b) continue;
-    const x1 = a.x + NW, y1 = a.y + NH/2, x2 = b.x - 2, y2 = b.y + NH/2, mx = (x1 + x2) / 2;
+    const x1 = a.x + NW, y1 = a.y + NH/2, x2 = b.x - 2, y2 = b.y + NH/2, c = Math.max(40, Math.abs(x2 - x1) / 2);
     const up = x => x === selected || anc.has(x), down = x => x === selected || desc.has(x);
     const hi = chain && ((up(d) && up(t.id)) || (down(d) && down(t.id)));
-    const k = hi ? 'hi' : (byId(d).status === 'done' ? 'ok' : 'wait');
-    out += `<path class="edge ${k}" d="M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}" marker-end="url(#m-${k})"/>`;
+    const dd = byId(d), bad = dd.status !== 'done' && dd.due && t.due && dd.due > t.due;
+    const k = hi ? 'hi' : bad ? 'bad' : (dd.status === 'done' ? 'ok' : 'wait');
+    out += `<path class="edge ${k}" d="M${x1} ${y1}C${x1 + c} ${y1} ${x2 - c} ${y2} ${x2} ${y2}" marker-end="url(#m-${k})"/>`;
   }
   for (const t of T()){
     const {x, y} = xy[t.id], s = state(t);
