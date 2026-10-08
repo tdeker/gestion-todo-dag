@@ -68,6 +68,20 @@ sudo systemctl enable --now gestion-todo-dag
 
 Reverse proxy : `deploy/Caddyfile` ou `deploy/nginx.conf`.
 
+### Option Railway (hébergement géré, sans serveur à administrer)
+
+Le dépôt contient un `railway.json` (build via le Dockerfile, sonde `/api/health`).
+
+1. Sur [railway.com](https://railway.com) : *New Project → Deploy from GitHub repo →* `tdeker/gestion-todo-dag` (branche `main`).
+2. Dans le service, onglet *Variables* :
+   - `AUTH_USER` et `AUTH_PASSWORD` : identifiants d'accès (indispensable, l'URL est publique) ;
+   - `RAILWAY_RUN_UID=0` : nécessaire pour que l'application puisse écrire dans le volume.
+   Ne pas définir `PORT` : Railway le fournit.
+3. Ajouter un **volume** sur le service (clic droit sur le service ou *Ctrl/Cmd + K → Volume*), point de montage **`/data`**. Sans volume, les données sont perdues à chaque redéploiement.
+4. *Settings → Networking → Generate Domain* pour obtenir une URL `https://…up.railway.app` (ou ajouter votre propre domaine).
+
+Chaque push sur `main` redéploie automatiquement. Avec un volume, un redéploiement provoque une courte coupure, et un seul exemplaire (replica) du service est possible, ce qui convient à cette application.
+
 ### Option C : GitHub Pages (démo, sans serveur)
 
 Dans le dépôt : *Settings → Pages → Source : GitHub Actions*. Le workflow `.github/workflows/pages.yml` publie `public/` à chaque push sur `main`. L'app fonctionne alors en **mode navigateur** (données non partagées).
