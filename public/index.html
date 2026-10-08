@@ -39,9 +39,8 @@
       <h2>Nouvelle tâche</h2>
       <form class="add" id="addForm">
         <input id="newTitle" type="text" placeholder="Ex. Valider le budget" autocomplete="off" aria-label="Titre de la nouvelle tâche">
-        <div class="field"><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
         <div class="grid2">
-          <div><label class="label" for="newStart">Début</label><input id="newStart" type="date"></div>
+          <div><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
           <div><label class="label" for="newDue">Échéance</label><input id="newDue" type="date"></div>
         </div>
         <div class="row"><span></span><button class="btn primary" type="submit">Ajouter la tâche</button></div>
@@ -56,10 +55,8 @@
     </div>
   </aside>
 
-  <div class="main">
   <section class="graph">
     <div class="graph-head">
-      <h2 class="sec-title">Graphe des dépendances</h2>
       <div class="legend">
         <span><i class="dot ready"></i>Prête</span>
         <span><i class="dot doing"></i>En cours</span>
@@ -72,25 +69,6 @@
     </div>
     <div class="canvas" id="canvas"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
   </section>
-
-  <section class="timeline" aria-label="Ligne de temps">
-    <div class="graph-head">
-      <h2 class="sec-title">Ligne de temps</h2>
-      <div class="tl-tools">
-        <div class="seg seg-2" role="group" aria-label="Échelle">
-          <button type="button" data-zoom="day">Jours</button>
-          <button type="button" data-zoom="week">Semaines</button>
-        </div>
-        <button class="btn" type="button" id="tlToday">Aujourd'hui</button>
-      </div>
-    </div>
-    <div class="tl-body">
-      <div class="tl-labels" id="tlLabels"></div>
-      <div class="tl-scroll" id="tlScroll"><svg id="tl" xmlns="http://www.w3.org/2000/svg"></svg><div class="tl-tip" id="tlTip" hidden></div></div>
-    </div>
-    <p class="hint tl-help">Glissez une barre pour la déplacer, ou ses bords pour changer le début ou l'échéance. Au clavier : flèches ← → pour décaler d'un jour, Maj + flèches pour changer la durée. Les liens rouges signalent une tâche qui commence avant la fin de son prérequis.</p>
-  </section>
-  </div>
 </div>
 
 <script src="app.js"></script>

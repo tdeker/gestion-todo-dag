@@ -1,4 +1,4 @@
-const KEY = 'graphe-taches-v3';
+const KEY = 'graphe-taches-v2';
 /* ---------- Dates ---------- */
 const pad2 = n => String(n).padStart(2, '0');
 const iso = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
@@ -23,16 +23,16 @@ const SAMPLE = {
   name: 'Lancement du site vitrine (exemple)',
   seq: 11,
   tasks: [
-    {id:1, title:'Cadrage du besoin', status:'done', deps:[], owner:'Claire', start:inDays(-14), due:inDays(-10)},
-    {id:2, title:"Choix de l'hébergeur", status:'done', deps:[1], owner:'Lucas', start:inDays(-9), due:inDays(-5)},
-    {id:3, title:'Maquettes des pages', status:'doing', deps:[1], owner:'Mehdi', start:inDays(-6), due:inDays(2)},
-    {id:4, title:'Rédaction des contenus', status:'todo', deps:[1], owner:'Sophie', start:inDays(-8), due:inDays(-1)},
-    {id:5, title:'Charte graphique', status:'todo', deps:[3], owner:'Mehdi', start:inDays(3), due:inDays(6)},
-    {id:6, title:'Intégration HTML/CSS', status:'todo', deps:[3,5], owner:'Lucas', start:inDays(1), due:inDays(5)},
-    {id:7, title:'Configuration du DNS', status:'todo', deps:[2], owner:'Lucas', start:inDays(1), due:inDays(4)},
-    {id:8, title:'Intégration des contenus', status:'todo', deps:[4,6], owner:'Sophie', start:inDays(10), due:inDays(16)},
-    {id:9, title:'Recette', status:'todo', deps:[7,8], owner:'Claire', start:inDays(17), due:inDays(20)},
-    {id:10, title:'Mise en ligne', status:'todo', deps:[9], owner:'Claire', start:inDays(22), due:inDays(23)}
+    {id:1, title:'Cadrage du besoin', status:'done', deps:[], owner:'Claire', due:inDays(-10)},
+    {id:2, title:"Choix de l'hébergeur", status:'done', deps:[1], owner:'Lucas', due:inDays(-5)},
+    {id:3, title:'Maquettes des pages', status:'doing', deps:[1], owner:'Mehdi', due:inDays(2)},
+    {id:4, title:'Rédaction des contenus', status:'todo', deps:[1], owner:'Sophie', due:inDays(-1)},
+    {id:5, title:'Charte graphique', status:'todo', deps:[3], owner:'Mehdi', due:inDays(6)},
+    {id:6, title:'Intégration HTML/CSS', status:'todo', deps:[3,5], owner:'Lucas', due:inDays(5)},
+    {id:7, title:'Configuration du DNS', status:'todo', deps:[2], owner:'Lucas', due:inDays(4)},
+    {id:8, title:'Intégration des contenus', status:'todo', deps:[4,6], owner:'Sophie', due:inDays(16)},
+    {id:9, title:'Recette', status:'todo', deps:[7,8], owner:'Claire', due:inDays(20)},
+    {id:10, title:'Mise en ligne', status:'todo', deps:[9], owner:'Claire', due:inDays(23)}
   ]
 };
 let who = '';
@@ -40,8 +40,6 @@ const owners = () => [...new Set(T().map(t => (t.owner || '').trim()).filter(Boo
 const mine = t => !who || (t.owner || '') === who;
 // Prérequis dont l'échéance tombe après celle de la tâche : planning incohérent
 const lateDeps = t => t.due ? t.deps.map(byId).filter(d => d && d.due && d.status !== 'done' && d.due > t.due) : [];
-// Début prévu avant (ou le jour de) l'échéance d'un prérequis non terminé
-const earlyStart = t => t.start ? t.deps.map(byId).filter(d => d && d.due && d.status !== 'done' && d.due >= t.start) : [];
 const LABEL = {ready:'PRÊTE', doing:'EN COURS', blocked:'BLOQUÉE', done:'FAITE'};
 
 let data = loadLocal() || clone(SAMPLE);
@@ -227,189 +225,6 @@ function drawGraph(){
   svg.innerHTML = out;
 }
 
-/* ---------- Ligne de temps ----------
-   Une barre va du début à l'échéance (incluse). Sans date de début, la barre dure un jour.
-   Glisser = déplacer, bords = changer début / échéance. */
-const TL = { zoom: 'day', drag: null, scrolled: false, min: null, px: 34 };
-const ZOOM = { day: 34, week: 14 };
-const ROW = 34, HEAD = 46;
-const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
-const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
-const fmtLong = s => parse(s).toLocaleDateString('fr-FR', {weekday:'short', day:'numeric', month:'short'});
-function span(t){
-  const e = t.due || t.start;
-  if (!e) return null;
-  return { s: t.start && t.start <= e ? t.start : e, e };
-}
-function tlRows(){
-  const rank = {};
-  const r = id => { if (rank[id] != null) return rank[id]; rank[id] = 0;
-    let m = 0; for (const d of byId(id).deps) if (byId(d)) m = Math.max(m, r(d) + 1); return rank[id] = m; };
-  T().forEach(t => r(t.id));
-  return [...T()].sort((a, b) => {
-    const sa = span(a), sb = span(b);
-    if (!!sa !== !!sb) return sa ? -1 : 1;              // tâches non planifiées en bas
-    if (sa && sb && sa.s !== sb.s) return sa.s.localeCompare(sb.s);
-    return rank[a.id] - rank[b.id] || a.id - b.id;
-  });
-}
-
-function drawTimeline(){
-  const svg = document.getElementById('tl'), labels = document.getElementById('tlLabels');
-  const px = TL.px = ZOOM[TL.zoom];
-  const rows = tlRows();
-  let min = iso(TODAY), max = iso(TODAY);
-  rows.forEach(t => { const sp = span(t); if (!sp) return; if (sp.s < min) min = sp.s; if (sp.e > max) max = sp.e; });
-  min = addDays(min, TL.zoom === 'week' ? -7 : -3); max = addDays(max, TL.zoom === 'week' ? 21 : 7);
-  TL.min = min;
-  const days = diffDays(min, max) + 1, W = days * px, H = HEAD + Math.max(rows.length, 1) * ROW + 6;
-  const X = s => diffDays(min, s) * px;
-  const rowY = {}; rows.forEach((t, i) => rowY[t.id] = HEAD + i * ROW);
-  const anc = selected ? ancestors(selected) : new Set(), desc = selected ? descendants(selected) : new Set();
-  const chain = selected ? new Set([selected, ...anc, ...desc]) : null;
-  svg.setAttribute('width', W); svg.setAttribute('height', H); svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  svg.classList.toggle('focus', !!chain);
-  svg.classList.toggle('filter', !!who);
-
-  let out = `<defs><marker id="tm-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-wait"/></marker>
-    <marker id="tm-hi" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-hi"/></marker>
-    <marker id="tm-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-bad"/></marker></defs>`;
-  // Fond : week-ends, mois, jours
-  for (let i = 0; i < days; i++){
-    const d = addDays(min, i), dt = parse(d), x = i * px, wd = dt.getDay();
-    if (wd === 0 || wd === 6) out += `<rect class="tl-weekend" x="${x}" y="${HEAD - 18}" width="${px}" height="${H - HEAD + 18}"/>`;
-    if (i === 0 || dt.getDate() === 1){
-      out += `<line class="tl-monthline" x1="${x}" x2="${x}" y1="0" y2="${H}"/>`;
-      out += `<text class="tl-month" x="${x + 6}" y="15">${esc(dt.toLocaleDateString('fr-FR', {month:'long', year:'numeric'}))}</text>`;
-    }
-    if (TL.zoom === 'day') out += `<text x="${x + px/2}" y="${HEAD - 6}" text-anchor="middle" class="${wd === 0 || wd === 6 ? 'tl-we' : ''}">${dt.getDate()}</text>`;
-    else if (wd === 1){ out += `<line class="tl-tick" x1="${x}" x2="${x}" y1="${HEAD - 18}" y2="${H}"/><text x="${x + 3}" y="${HEAD - 6}">${dt.getDate()}</text>`; }
-  }
-  out += `<line class="tl-rowline" x1="0" x2="${W}" y1="${HEAD}" y2="${HEAD}"/>`;
-  rows.forEach((t, i) => out += `<line class="tl-rowline" x1="0" x2="${W}" y1="${HEAD + (i + 1) * ROW}" y2="${HEAD + (i + 1) * ROW}"/>`);
-  const tx = X(iso(TODAY));
-  out += `<rect class="tl-today" x="${tx}" y="${HEAD - 18}" width="${px}" height="${H - HEAD + 18}"/>
-    <line class="tl-todayline" x1="${tx + px/2}" x2="${tx + px/2}" y1="${HEAD - 18}" y2="${H}"/>`;
-  if (TL.zoom === 'week') out += `<text class="tl-todaylbl" x="${tx + px/2}" y="${HEAD - 22}" text-anchor="middle">auj.</text>`;
-
-  // Liens de dépendance : fin du prérequis → début de la tâche
-  for (const t of rows){
-    const sp = span(t); if (!sp) continue;
-    for (const d of t.deps){
-      const dt = byId(d), dsp = dt && span(dt); if (!dsp) continue;
-      const x1 = X(dsp.e) + px - 2, y1 = rowY[d] + ROW/2, x2 = X(sp.s) + 2, y2 = rowY[t.id] + ROW/2;
-      const bad = dt.status !== 'done' && dsp.e >= sp.s;
-      const up = x => x === selected || anc.has(x), down = x => x === selected || desc.has(x);
-      const hi = chain && ((up(d) && up(t.id)) || (down(d) && down(t.id)));
-      const xm = x1 + 8, ya = y2 + (y2 > y1 ? -ROW/2 + 3 : ROW/2 - 3);
-      const path = x2 - 8 >= xm
-        ? `M${x1} ${y1}H${xm}V${y2}H${x2 - 1}`
-        : `M${x1} ${y1}H${xm}V${ya}H${x2 - 8}V${y2}H${x2 - 1}`;
-      out += `<path class="tl-dep ${bad ? 'bad' : ''} ${hi ? 'hi' : ''} ${dt.status === 'done' ? 'done' : ''}" d="${path}" marker-end="url(#${bad ? 'tm-bad' : hi ? 'tm-hi' : 'tm-a'})"/>`;
-    }
-  }
-  // Barres
-  for (const t of rows){
-    const y = rowY[t.id], sp = span(t);
-    if (!sp){
-      out += `<rect class="tl-plan" data-plan="${t.id}" x="0" y="${y}" width="${W}" height="${ROW}"><title>Cliquez sur un jour pour planifier</title></rect>
-        <text class="tl-plan-txt" x="${tx + px + 6}" y="${y + ROW/2 + 4}">Cliquez sur un jour pour planifier</text>`;
-      continue;
-    }
-    const s = state(t);
-    const cls = ['bar', s, isLate(t) ? 'late' : '', t.id === selected ? 'sel' : '', chain && chain.has(t.id) ? 'chain' : '', mine(t) ? '' : 'other'].join(' ');
-    const dur = diffDays(sp.s, sp.e) + 1;
-    out += `<g class="${cls}" data-bar="${t.id}" tabindex="0" role="slider" aria-label="${esc(t.title)} : du ${fmtLong(sp.s)} au ${fmtLong(sp.e)}, ${dur} j" aria-valuetext="${esc(fmtLong(sp.s))}">
-      <rect class="b" x="${X(sp.s) + 2}" y="${y + 7}" width="${dur * px - 4}" height="${ROW - 14}" rx="5"/>
-      <rect class="h" data-edge="start" x="${X(sp.s)}" y="${y + 4}" width="8" height="${ROW - 8}"/>
-      <rect class="h" data-edge="end" x="${X(sp.e) + px - 8}" y="${y + 4}" width="8" height="${ROW - 8}"/>
-      <text class="o" x="${X(sp.e) + px + 4}" y="${y + ROW/2 + 4}">${esc(t.owner || '')}</text>
-    </g>`;
-  }
-  svg.innerHTML = out;
-
-  labels.innerHTML = `<div class="tl-labhead">Tâche</div>` + rows.map(t => {
-    const sp = span(t);
-    const cls = ['tl-label', t.id === selected ? 'sel' : '', (chain && !chain.has(t.id)) || !mine(t) ? 'dim' : ''].join(' ');
-    return `<div class="${cls}" data-sel="${t.id}" title="${esc(t.title)}"><i class="dot ${state(t)}"></i><span>${esc(t.title)}</span>${sp ? '' : '<em>non planifiée</em>'}</div>`;
-  }).join('');
-  document.querySelectorAll('[data-zoom]').forEach(b => b.setAttribute('aria-pressed', b.dataset.zoom === TL.zoom));
-  if (!TL.scrolled){ TL.scrolled = true; scrollToToday(); }
-}
-function scrollToToday(){
-  const sc = document.getElementById('tlScroll');
-  sc.scrollLeft = Math.max(0, diffDays(TL.min, iso(TODAY)) * TL.px - sc.clientWidth / 3);
-}
-function dayAt(clientX){
-  const r = document.getElementById('tl').getBoundingClientRect();
-  return addDays(TL.min, Math.floor((clientX - r.left) / TL.px));
-}
-function placeBar(g, s, e){
-  const X = d => diffDays(TL.min, d) * TL.px, px = TL.px;
-  const [b, h1, h2] = g.querySelectorAll('rect'), o = g.querySelector('text');
-  b.setAttribute('x', X(s) + 2); b.setAttribute('width', (diffDays(s, e) + 1) * px - 4);
-  h1.setAttribute('x', X(s)); h2.setAttribute('x', X(e) + px - 8); o.setAttribute('x', X(e) + px + 4);
-}
-function showTip(text, clientX){
-  const tip = document.getElementById('tlTip'), sc = document.getElementById('tlScroll');
-  tip.textContent = text; tip.hidden = false;
-  tip.style.left = Math.max(4, clientX - sc.getBoundingClientRect().left + sc.scrollLeft - 60) + 'px';
-}
-function setSpan(t, s, e){ t.start = s; t.due = e; }
-
-const tlSvg = document.getElementById('tl');
-tlSvg.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return;
-  const g = e.target.closest('[data-bar]');
-  if (g){
-    const t = byId(+g.dataset.bar), sp = span(t);
-    TL.drag = { id: t.id, g, mode: e.target.dataset.edge || 'move', x0: e.clientX, s: sp.s, e: sp.e, ns: sp.s, ne: sp.e, moved: false };
-    tlSvg.setPointerCapture(e.pointerId);
-    e.preventDefault();
-    return;
-  }
-  const p = e.target.closest('[data-plan]');
-  if (p){ const t = byId(+p.dataset.plan), d = dayAt(e.clientX); setSpan(t, d, d); selected = t.id; commit(); }
-});
-tlSvg.addEventListener('pointermove', e => {
-  const D = TL.drag; if (!D) return;
-  const dd = Math.round((e.clientX - D.x0) / TL.px);
-  if (dd !== 0) D.moved = true;
-  if (D.mode === 'move'){ D.ns = addDays(D.s, dd); D.ne = addDays(D.e, dd); }
-  else if (D.mode === 'start'){ D.ns = addDays(D.s, dd); if (D.ns > D.e) D.ns = D.e; D.ne = D.e; }
-  else { D.ne = addDays(D.e, dd); if (D.ne < D.s) D.ne = D.s; D.ns = D.s; }
-  placeBar(D.g, D.ns, D.ne);
-  if (D.moved) showTip(`${fmtDate(D.ns)} → ${fmtDate(D.ne)} · ${diffDays(D.ns, D.ne) + 1} j`, e.clientX);
-});
-function endDrag(){
-  const D = TL.drag; if (!D) return;
-  TL.drag = null;
-  document.getElementById('tlTip').hidden = true;
-  if (D.moved && (D.ns !== D.s || D.ne !== D.e)){ setSpan(byId(D.id), D.ns, D.ne); selected = D.id; armedDelete = false; commit(); }
-  else if (!D.moved){ armedDelete = false; select(D.id); }
-}
-tlSvg.addEventListener('pointerup', endDrag);
-tlSvg.addEventListener('pointercancel', endDrag);
-tlSvg.addEventListener('keydown', e => {
-  const g = e.target.closest('[data-bar]'); if (!g) return;
-  const t = byId(+g.dataset.bar), sp = span(t);
-  if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); select(t.id); return; }
-  const k = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-  if (!k) return;
-  e.preventDefault();
-  if (e.shiftKey){ const ne = addDays(sp.e, k); if (ne < sp.s) return; setSpan(t, sp.s, ne); }
-  else setSpan(t, addDays(sp.s, k), addDays(sp.e, k));
-  selected = t.id; commit();
-  document.querySelector(`#tl [data-bar="${t.id}"]`)?.focus();
-});
-document.getElementById('tlLabels').addEventListener('click', e => {
-  const l = e.target.closest('[data-sel]'); if (l){ armedDelete = false; select(+l.dataset.sel); }
-});
-document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
-  TL.zoom = b.dataset.zoom; TL.scrolled = false; drawTimeline();
-}));
-document.getElementById('tlToday').addEventListener('click', scrollToToday);
-
 /* ---------- Panneau ---------- */
 function setStatus(id, st){ const t = byId(id); if (!t) return; t.status = st; commit(); }
 function select(id){ selected = selected === id ? null : id; render(); }
@@ -463,7 +278,7 @@ let armedDelete = false;
 function renderDetail(){
   const el = document.getElementById('detail');
   const t = selected && byId(selected);
-  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Cliquez une tâche dans le graphe ou la ligne de temps pour la modifier et gérer ses dépendances.</p>`; return; }
+  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Cliquez une tâche dans le graphe pour la modifier et gérer ses dépendances.</p>`; return; }
   const s = state(t);
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
   const canProgress = blockers.length === 0;
@@ -472,13 +287,10 @@ function renderDetail(){
   el.innerHTML = `
     <h2>Tâche #${t.id} <b style="color:var(--${s})">${LABEL[s]}</b></h2>
     <input type="text" id="editTitle" value="${esc(t.title)}" aria-label="Titre de la tâche">
-    <div class="field"><label class="label" for="editOwner">Responsable</label><input type="text" id="editOwner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" autocomplete="off"></div>
     <div class="grid2">
-      <div><label class="label" for="editStart">Début</label><input type="date" id="editStart" value="${esc(t.start || '')}" ${t.due ? `max="${t.due}"` : ''}></div>
-      <div><label class="label" for="editDue">Échéance</label><input type="date" id="editDue" value="${esc(t.due || '')}" ${t.start ? `min="${t.start}"` : ''}></div>
+      <div><label class="label" for="editOwner">Responsable</label><input type="text" id="editOwner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" autocomplete="off"></div>
+      <div><label class="label" for="editDue">Échéance</label><input type="date" id="editDue" value="${esc(t.due || '')}"></div>
     </div>
-    ${t.start && t.due && t.start > t.due ? `<p class="hint warn">Le début est après l'échéance.</p>` : ''}
-    ${earlyStart(t).length ? `<p class="hint warn">Commence avant la fin de son prérequis : ${earlyStart(t).map(d => `${esc(d.title)} (${fmtDate(d.due)})`).join(', ')}.</p>` : ''}
     ${isLate(t) ? `<p class="hint" style="color:var(--danger)">${esc(dueInfo(t).txt)}.</p>` : ''}
     ${lateDeps(t).length ? `<p class="hint warn">Échéance antérieure à celle de son prérequis : ${lateDeps(t).map(d => `${esc(d.title)} (${fmtDate(d.due)})`).join(', ')}.</p>` : ''}
     <div class="seg" role="group" aria-label="Statut">
@@ -499,7 +311,7 @@ function renderDetail(){
     <div class="row"><button class="btn" data-act="deselect">Fermer</button><button class="btn danger ${armedDelete ? 'armed' : ''}" data-act="delete">${armedDelete ? 'Confirmer la suppression' : 'Supprimer'}</button></div>`;
 }
 
-function render(){ drawGraph(); drawTimeline(); renderSide(); }
+function render(){ drawGraph(); renderSide(); }
 function commit(){ save(); render(); }
 
 /* ---------- Événements ---------- */
@@ -530,19 +342,18 @@ document.querySelector('aside').addEventListener('change', e => {
   if (e.target.id === 'addDep' && e.target.value){ byId(selected).deps.push(+e.target.value); commit(); }
   if (e.target.id === 'editOwner'){ byId(selected).owner = e.target.value.trim(); commit(); }
   if (e.target.id === 'editDue'){ byId(selected).due = e.target.value; commit(); }
-  if (e.target.id === 'editStart'){ byId(selected).start = e.target.value; commit(); }
 });
 document.querySelector('aside').addEventListener('input', e => {
-  if (e.target.id === 'editTitle'){ byId(selected).title = e.target.value || 'Sans titre'; save(); drawGraph(); drawTimeline(); }
+  if (e.target.id === 'editTitle'){ byId(selected).title = e.target.value || 'Sans titre'; save(); drawGraph(); }
 });
 document.getElementById('addForm').addEventListener('submit', e => {
   e.preventDefault();
   const inp = document.getElementById('newTitle'), title = inp.value.trim();
   if (!title){ inp.focus(); return; }
   const id = data.seq++;
-  const ownEl = document.getElementById('newOwner'), dueEl = document.getElementById('newDue'), startEl = document.getElementById('newStart');
-  T().push({id, title, status:'todo', deps: selected && byId(selected) ? [selected] : [], owner: ownEl.value.trim(), start: startEl.value, due: dueEl.value});
-  inp.value = ''; dueEl.value = ''; startEl.value = ''; selected = id; armedDelete = false; commit();
+  const ownEl = document.getElementById('newOwner'), dueEl = document.getElementById('newDue');
+  T().push({id, title, status:'todo', deps: selected && byId(selected) ? [selected] : [], owner: ownEl.value.trim(), due: dueEl.value});
+  inp.value = ''; dueEl.value = ''; selected = id; armedDelete = false; commit();
 });
 document.getElementById('whoFilter').addEventListener('change', e => { who = e.target.value; render(); });
 const nameEl = document.getElementById('projectName');

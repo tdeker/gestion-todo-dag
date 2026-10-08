@@ -3,10 +3,9 @@
 Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 
 - Vue graphe : les tâches sont rangées en colonnes selon leur profondeur de dépendance.
-- Ligne de temps (Gantt) sous le graphe : barres du début à l'échéance, déplaçables et redimensionnables à la souris ou au clavier, liens de dépendance, échelle jours / semaines.
 - Tâches **prêtes** (tous les prérequis faits) mises en évidence, tâches **bloquées** en pointillés.
 - Responsable et échéance par tâche, alertes de retard (J-3, retard en jours).
-- Contrôle de cohérence : une tâche qui commence ou se termine avant l'un de ses prérequis est signalée (lien rouge dans la ligne de temps).
+- Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.
 - Filtre par responsable (« mes tâches »).
 - Les cycles sont impossibles : ni l'interface ni l'API ne les acceptent.
 
