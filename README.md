@@ -16,7 +16,7 @@ Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 | Mode | Quand | Données |
 |---|---|---|
 | **Serveur** | L'app est servie par `server/server.js` | Partagées entre tous les utilisateurs, fichier `data/projects.json` |
-| **Navigateur** | Fichiers statiques seuls (GitHub Pages, ouverture de `public/index.html`) | Stockées dans le navigateur de chaque personne, non partagées |
+| **Navigateur** | Fichiers statiques seuls (ouverture de `public/index.html`, hébergement statique) | Stockées dans le navigateur de chaque personne, non partagées |
 
 L'application détecte le mode toute seule au démarrage (présence de l'API `/api/projects`). Le mode actif est indiqué en bas du panneau de gauche.
 
@@ -84,10 +84,6 @@ Le dépôt contient un `railway.json` (build via le Dockerfile, sonde `/api/heal
 
 Chaque push sur `main` redéploie automatiquement. Avec un volume, un redéploiement provoque une courte coupure, et un seul exemplaire (replica) du service est possible, ce qui convient à cette application.
 
-### Option C : GitHub Pages (démo, sans serveur)
-
-Dans le dépôt : *Settings → Pages → Source : GitHub Actions*. Le workflow `.github/workflows/pages.yml` publie `public/` à chaque push sur `main`. L'app fonctionne alors en **mode navigateur** (données non partagées).
-
 ## Configuration
 
 | Variable | Défaut | Rôle |
@@ -135,7 +131,6 @@ public/          Application (HTML, CSS, JS sans framework)
 server/          Serveur Node.js sans dépendance (fichiers statiques + API JSON)
 deploy/          Exemples Caddy, Nginx et systemd
 Dockerfile, docker-compose.yml
-.github/workflows/pages.yml   Publication GitHub Pages
 ```
 
 ## Licence
