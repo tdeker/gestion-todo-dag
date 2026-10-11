@@ -53,6 +53,7 @@
       <h2>Nouvelle tâche</h2>
       <form class="add" id="addForm">
         <input id="newTitle" type="text" placeholder="Ex. Valider le budget" autocomplete="off" aria-label="Titre de la nouvelle tâche">
+        <textarea id="newDesc" rows="2" placeholder="Description (facultatif)" aria-label="Description de la nouvelle tâche"></textarea>
         <div class="grid2">
           <div><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
           <div><label class="label" for="newDue">Échéance</label><input id="newDue" type="date"></div>
@@ -68,18 +69,30 @@
 
   <section class="graph">
     <div class="graph-head">
+      <div class="views">
+        <div class="seg seg-2" role="group" aria-label="Vue">
+          <button type="button" data-view="seq">Séquence</button>
+          <button type="button" data-view="kanban">Kanban</button>
+        </div>
+        <div class="seg seg-2" role="group" aria-label="Colonnes du Kanban" id="kbGroup">
+          <button type="button" data-group="status">Par statut</button>
+          <button type="button" data-group="owner">Par personne</button>
+        </div>
+      </div>
       <div class="legend">
         <span><i class="dot ready"></i>Prête</span>
         <span><i class="dot doing"></i>En cours</span>
         <span><i class="dot blocked"></i>Bloquée</span>
         <span><i class="dot done"></i>Faite</span>
-        <span><i class="ln-bad"></i>Prérequis prévu après</span>
+        <span class="seq-only"><i class="ln-bad"></i>Prérequis prévu après</span>
       </div>
       <label class="filter-who" for="whoFilter">Responsable
         <select id="whoFilter"></select>
       </label>
     </div>
     <div class="canvas" id="canvas"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    <div class="kanban" id="kanban" hidden></div>
+    <p class="hint kb-help" id="kbHelp" hidden></p>
   </section>
 </div>
 

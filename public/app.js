@@ -22,16 +22,16 @@ const SAMPLE = {
   name: 'Lancement du site vitrine (exemple)',
   seq: 11,
   tasks: [
-    {id:1, title:'Cadrage du besoin', status:'done', deps:[], owner:'Claire', due:inDays(-10)},
+    {id:1, title:'Cadrage du besoin', status:'done', deps:[], owner:'Claire', due:inDays(-10), description:'Atelier avec la direction : objectifs du site, cibles, arborescence et budget.'},
     {id:2, title:"Choix de l'hébergeur", status:'done', deps:[1], owner:'Lucas', due:inDays(-5)},
-    {id:3, title:'Maquettes des pages', status:'doing', deps:[1], owner:'Mehdi', due:inDays(2)},
-    {id:4, title:'Rédaction des contenus', status:'todo', deps:[1], owner:'Sophie', due:inDays(-1)},
+    {id:3, title:'Maquettes des pages', status:'doing', deps:[1], owner:'Mehdi', due:inDays(2), description:'Accueil, offre, à propos, contact. Version mobile et ordinateur.'},
+    {id:4, title:'Rédaction des contenus', status:'todo', deps:[1], owner:'Sophie', due:inDays(-1), description:'Textes des 4 pages, relus par la communication. Prévoir les mentions légales.'},
     {id:5, title:'Charte graphique', status:'todo', deps:[3], owner:'Mehdi', due:inDays(6)},
-    {id:6, title:'Intégration HTML/CSS', status:'todo', deps:[3,5], owner:'Lucas', due:inDays(5)},
+    {id:6, title:'Intégration HTML/CSS', status:'todo', deps:[3,5], owner:'Lucas', due:inDays(5), description:'Gabarits responsive à partir des maquettes validées et de la charte.'},
     {id:7, title:'Configuration du DNS', status:'todo', deps:[2], owner:'Lucas', due:inDays(4)},
     {id:8, title:'Intégration des contenus', status:'todo', deps:[4,6], owner:'Sophie', due:inDays(16)},
-    {id:9, title:'Recette', status:'todo', deps:[7,8], owner:'Claire', due:inDays(20)},
-    {id:10, title:'Mise en ligne', status:'todo', deps:[9], owner:'Claire', due:inDays(23)}
+    {id:9, title:'Recette', status:'todo', deps:[7,8], owner:'Claire', due:inDays(20), description:'Tests sur Chrome, Safari et Firefox, mobile compris. Formulaire de contact à vérifier.'},
+    {id:10, title:'Mise en ligne', status:'todo', deps:[9], owner:'Claire', due:inDays(23), description:'Bascule DNS, vérification du certificat HTTPS, annonce interne.'}
   ]
 };
 let who = '';
@@ -177,7 +177,7 @@ async function projectGone(){
 async function poll(){
   if (store.mode !== 'server' || store.dirty || store.saving || document.hidden) return;
   refreshList();
-  if (document.activeElement && document.activeElement.matches('input, select')) return;
+  if (document.activeElement && document.activeElement.matches('input, select, textarea')) return;
   const id = store.id;
   try {
     const r = await fetch('api/projects/' + id, { cache: 'no-store' });
@@ -329,6 +329,7 @@ function drawGraph(){
     const dueTxt = t.due ? (di.cls === 'late' ? `⚠ ${fmtDate(t.due)}` : fmtDate(t.due)) : '—';
     const cls = ['node', s, t.id === selected ? 'sel' : '', chain && chain.has(t.id) ? 'chain' : '', mine(t) ? '' : 'other'].join(' ');
     out += `<g class="${cls}" data-id="${t.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${esc(t.title)} : ${LABEL[s].toLowerCase()}, ${esc(own || 'non assignée')}, ${esc(di.txt)}">
+      <title>${esc(t.title)}${t.description ? '\n\n' + esc(t.description) : ''}</title>
       <rect class="halo" x="-5" y="-5" width="${NW+10}" height="${NH+10}" rx="12"/>
       <rect class="box" width="${NW}" height="${NH}" rx="8"/>
       <text class="tag" x="12" y="17">${LABEL[s]}</text>
@@ -341,6 +342,132 @@ function drawGraph(){
   }
   svg.innerHTML = out;
 }
+
+/* ---------- Vue Kanban ----------
+   Alternative à la vue en séquence. Colonnes par statut (glisser = changer de statut)
+   ou par personne (glisser = changer de responsable). */
+const UI_KEY = 'graphe-taches-vue';
+let view = 'seq', group = 'status', dragId = null;
+try { const v = JSON.parse(lsGet(UI_KEY) || '{}'); if (v.view === 'kanban') view = 'kanban'; if (v.group === 'owner') group = 'owner'; } catch(e){}
+const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group }));
+const ORDER = { doing: 0, ready: 1, blocked: 2, done: 3 };
+const byDueId = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.id - b.id;
+const initials = n => n.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
+
+function kanbanCols(){
+  if (group === 'status') return [
+    { key: 'blocked', label: 'Bloquées', dot: 'blocked', hint: 'En attente de prérequis' },
+    { key: 'ready',   label: 'Prêtes',   dot: 'ready',   hint: 'Peuvent démarrer' },
+    { key: 'doing',   label: 'En cours', dot: 'doing' },
+    { key: 'done',    label: 'Faites',   dot: 'done' }
+  ].map(c => ({ ...c, tasks: T().filter(t => state(t) === c.key).sort(byDueId) }));
+  const sortOwner = (a, b) => ORDER[state(a)] - ORDER[state(b)] || byDueId(a, b);
+  const cols = owners().map(o => ({ key: 'o:' + o, owner: o, label: o, tasks: T().filter(t => (t.owner || '').trim() === o).sort(sortOwner) }));
+  cols.push({ key: 'o:', owner: '', label: 'Non assignée', tasks: T().filter(t => !(t.owner || '').trim()).sort(sortOwner) });
+  return cols;
+}
+function kcard(t){
+  const s = state(t), di = dueInfo(t);
+  const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
+  const kids = children(t.id).length;
+  const cls = ['kcard', s, t.id === selected ? 'sel' : '', mine(t) ? '' : 'other', isLate(t) ? 'late' : ''].join(' ');
+  return `<article class="${cls}" data-id="${t.id}" draggable="true" tabindex="0" role="button"
+      aria-label="${esc(t.title)} : ${LABEL[s].toLowerCase()}, ${esc(t.owner || 'non assignée')}, ${esc(di.txt)}">
+    <div class="khead"><span class="ktag">${LABEL[s]}</span><span class="knum">#${t.id}</span></div>
+    <div class="ktitle">${esc(t.title)}</div>
+    ${t.description ? `<p class="kdesc">${esc(t.description)}</p>` : ''}
+    ${blockers.length && s !== 'done' ? `<div class="kblock">Attend : ${blockers.map(b => esc(b.title)).join(', ')}</div>` : ''}
+    <div class="kmeta">
+      ${group === 'owner' ? `<span class="klinks">${t.deps.length ? `${t.deps.length} prérequis` : ''}${t.deps.length && kids ? ' · ' : ''}${kids ? `débloque ${kids}` : ''}</span>`
+                          : `<span class="kowner ${t.owner ? '' : 'none'}">${esc(t.owner || 'Non assignée')}</span>`}
+      <span class="kdue ${di.cls}" title="${esc(di.txt)}">${t.due ? esc(di.cls === 'late' ? '⚠ ' + fmtDate(t.due) : di.cls === 'soon' ? di.txt : fmtDate(t.due)) : '—'}</span>
+    </div>
+  </article>`;
+}
+function drawKanban(){
+  const el = document.getElementById('kanban');
+  const cols = kanbanCols();
+  el.classList.toggle('filter', !!who);
+  el.innerHTML = cols.map(c => `
+    <section class="kcol ${c.dot ? 'st-' + c.dot : 'by-owner'} ${group === 'owner' && who && c.owner !== who ? 'other' : ''}" data-col="${esc(c.key)}">
+      <header>
+        ${c.dot ? `<i class="dot ${c.dot}"></i>` : `<span class="avatar ${c.owner ? '' : 'none'}">${c.owner ? esc(initials(c.owner)) : '?'}</span>`}
+        <h3>${esc(c.label)}</h3><b>${c.tasks.length}</b>
+      </header>
+      ${c.hint ? `<p class="khint">${c.hint}</p>` : ''}
+      <div class="klist">${c.tasks.length ? c.tasks.map(kcard).join('') : '<p class="kempty">Aucune tâche</p>'}</div>
+    </section>`).join('');
+  document.getElementById('kbHelp').textContent = group === 'status'
+    ? 'Glissez une carte vers une autre colonne pour changer son statut. Une tâche bloquée ne peut pas passer en cours tant que ses prérequis ne sont pas faits.'
+    : 'Glissez une carte vers une autre colonne pour changer de responsable. Pour une nouvelle personne, saisissez son nom dans la fiche de la tâche.';
+}
+// Déplacer une carte : renvoie un message d'erreur si le déplacement est impossible
+function moveTo(t, key){
+  if (group === 'owner'){
+    const owner = key.slice(2);
+    if ((t.owner || '').trim() === owner) return null;
+    t.owner = owner; return null;
+  }
+  const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
+  if ((key === 'doing' || key === 'done') && blockers.length)
+    return `« ${t.title} » attend encore : ${blockers.map(b => b.title).join(', ')}.`;
+  if (key === 'ready' && blockers.length)
+    return `« ${t.title} » ne peut pas être prête : ses prérequis ne sont pas faits.`;
+  if (key === 'blocked' && !blockers.length)
+    return `« ${t.title} » n'a aucun prérequis en attente : elle ne peut pas être bloquée.`;
+  t.status = key === 'doing' ? 'doing' : key === 'done' ? 'done' : 'todo';
+  return null;
+}
+function drawMain(){ if (view === 'kanban') drawKanban(); else drawGraph(); }
+function syncView(){
+  const k = view === 'kanban';
+  document.getElementById('canvas').hidden = k;
+  document.getElementById('kanban').hidden = !k;
+  document.getElementById('kbHelp').hidden = !k;
+  document.getElementById('kbGroup').hidden = !k;
+  document.querySelector('.graph').classList.toggle('is-kanban', k);
+  document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view));
+  document.querySelectorAll('[data-group]').forEach(b => b.setAttribute('aria-pressed', b.dataset.group === group));
+}
+document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; saveUi(); render(); }));
+document.querySelectorAll('[data-group]').forEach(b => b.addEventListener('click', () => { group = b.dataset.group; saveUi(); render(); }));
+
+const kbEl = document.getElementById('kanban');
+kbEl.addEventListener('click', e => {
+  const c = e.target.closest('.kcard');
+  if (c) select(+c.dataset.id); else if (e.target.closest('.kcol') && selected){ selected = null; render(); }
+});
+kbEl.addEventListener('keydown', e => {
+  const c = e.target.closest('.kcard');
+  if (c && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); select(+c.dataset.id); document.querySelector(`.kcard[data-id="${c.dataset.id}"]`)?.focus(); }
+});
+kbEl.addEventListener('dragstart', e => {
+  const c = e.target.closest('.kcard'); if (!c) return;
+  dragId = +c.dataset.id;
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', c.dataset.id); } catch(err){}
+  requestAnimationFrame(() => c.classList.add('dragging'));
+});
+kbEl.addEventListener('dragend', () => { dragId = null; kbEl.querySelectorAll('.dragging, .over').forEach(x => x.classList.remove('dragging', 'over')); });
+kbEl.addEventListener('dragover', e => {
+  const col = e.target.closest('.kcol'); if (!col || dragId == null) return;
+  e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  kbEl.querySelectorAll('.kcol.over').forEach(x => x !== col && x.classList.remove('over'));
+  col.classList.add('over');
+});
+kbEl.addEventListener('dragleave', e => {
+  const col = e.target.closest('.kcol');
+  if (col && !col.contains(e.relatedTarget)) col.classList.remove('over');
+});
+kbEl.addEventListener('drop', e => {
+  const col = e.target.closest('.kcol'); if (!col || dragId == null) return;
+  e.preventDefault();
+  const t = byId(dragId); dragId = null;
+  if (!t) return;
+  const err = moveTo(t, col.dataset.col);
+  if (err){ render(); showToast(err, false); return; }
+  selected = t.id; commit();
+});
 
 /* ---------- Panneau ---------- */
 function setStatus(id, st){ const t = byId(id); if (!t) return; t.status = st; commit(); }
@@ -394,7 +521,7 @@ function renderSide(){
 function renderDetail(){
   const el = document.getElementById('detail');
   const t = selected && byId(selected);
-  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Cliquez une tâche dans le graphe pour la modifier et gérer ses dépendances.</p>`; return; }
+  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Cliquez une tâche dans le graphe ou le Kanban pour la modifier et gérer ses dépendances.</p>`; return; }
   const s = state(t);
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
   const canProgress = blockers.length === 0;
@@ -403,6 +530,7 @@ function renderDetail(){
   el.innerHTML = `
     <h2>Tâche #${t.id} <b style="color:var(--${s})">${LABEL[s]}</b></h2>
     <input type="text" id="editTitle" value="${esc(t.title)}" aria-label="Titre de la tâche">
+    <div class="field"><label class="label" for="editDesc">Description</label><textarea id="editDesc" rows="3" placeholder="Contexte, livrable attendu, critères de fin…">${esc(t.description || '')}</textarea></div>
     <div class="grid2">
       <div><label class="label" for="editOwner">Responsable</label><input type="text" id="editOwner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" autocomplete="off"></div>
       <div><label class="label" for="editDue">Échéance</label><input type="date" id="editDue" value="${esc(t.due || '')}"></div>
@@ -427,7 +555,7 @@ function renderDetail(){
     <div class="row"><button class="btn" data-act="deselect">Fermer</button><span class="kbd-hint">ou touche <kbd>Suppr</kbd></span><button class="btn danger" data-act="delete">Supprimer</button></div>`;
 }
 
-function render(){ drawGraph(); renderSide(); }
+function render(){ syncView(); drawMain(); renderSide(); }
 function commit(){ save(); render(); }
 
 /* ---------- Événements ---------- */
@@ -455,16 +583,17 @@ document.querySelector('aside').addEventListener('change', e => {
   if (e.target.id === 'editDue'){ byId(selected).due = e.target.value; commit(); }
 });
 document.querySelector('aside').addEventListener('input', e => {
-  if (e.target.id === 'editTitle'){ byId(selected).title = e.target.value || 'Sans titre'; save(); drawGraph(); }
+  if (e.target.id === 'editTitle'){ byId(selected).title = e.target.value || 'Sans titre'; save(); drawMain(); }
+  if (e.target.id === 'editDesc'){ byId(selected).description = e.target.value; save(); drawMain(); }
 });
 document.getElementById('addForm').addEventListener('submit', e => {
   e.preventDefault();
   const inp = document.getElementById('newTitle'), title = inp.value.trim();
   if (!title){ inp.focus(); return; }
   const id = data.seq++;
-  const ownEl = document.getElementById('newOwner'), dueEl = document.getElementById('newDue');
-  T().push({id, title, status:'todo', deps: selected && byId(selected) ? [selected] : [], owner: ownEl.value.trim(), due: dueEl.value});
-  inp.value = ''; dueEl.value = ''; selected = id; commit();
+  const ownEl = document.getElementById('newOwner'), dueEl = document.getElementById('newDue'), descEl = document.getElementById('newDesc');
+  T().push({id, title, status:'todo', deps: selected && byId(selected) ? [selected] : [], owner: ownEl.value.trim(), due: dueEl.value, description: descEl.value.trim()});
+  inp.value = ''; dueEl.value = ''; descEl.value = ''; selected = id; commit();
 });
 document.getElementById('whoFilter').addEventListener('change', e => { who = e.target.value; render(); });
 /* ---------- Suppression d'une tâche (bouton ou touche Suppr), avec annulation ---------- */
@@ -486,9 +615,11 @@ function deleteTask(id){
   };
   showToast(`« ${t.title} » supprimée.`);
 }
-function showToast(text){
+function showToast(text, canUndo = true){
   const el = document.getElementById('toast');
   el.querySelector('span').textContent = text;
+  document.getElementById('toastUndo').hidden = !canUndo;
+  if (!canUndo) undo = null;
   el.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, 7000);

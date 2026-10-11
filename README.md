@@ -7,6 +7,8 @@ Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 - Responsable et échéance par tâche, alertes de retard (J-3, retard en jours).
 - Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.
 - Filtre par responsable (« mes tâches »).
+- **Description** libre sur chaque tâche (fiche de la tâche et formulaire d'ajout), affichée sur les cartes Kanban et au survol dans le graphe.
+- **Vue Kanban**, alternative à la vue en séquence : colonnes **par statut** (glisser une carte change son statut, en respectant les dépendances) ou **par personne** (glisser change le responsable). La vue choisie est mémorisée.
 - **Plusieurs projets**, via le menu « Projets » : créer, ouvrir, renommer, supprimer (icône corbeille sur chaque projet de la liste, avec confirmation). Le dernier projet ouvert est mémorisé.
 - Suppression d'une tâche : la sélectionner puis touche **Suppr** (ou Retour arrière), avec possibilité d'annuler pendant 7 s (bouton ou Ctrl/Cmd + Z). Échap désélectionne.
 - Les cycles sont impossibles : ni l'interface ni l'API ne les acceptent.
