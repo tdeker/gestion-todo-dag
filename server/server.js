@@ -81,6 +81,7 @@ function validate(p) {
     if (!STATUSES.has(t.status)) return `Statut invalide (tâche #${t.id}).`;
     if (!Array.isArray(t.deps) || !t.deps.every(Number.isInteger)) return `Dépendances invalides (tâche #${t.id}).`;
     if (t.owner != null && (typeof t.owner !== 'string' || t.owner.length > 100)) return `Responsable invalide (tâche #${t.id}).`;
+    if (t.description != null && (typeof t.description !== 'string' || t.description.length > 5000)) return `Description invalide ou trop longue (tâche #${t.id}, 5000 caractères max).`;
     if (t.due != null && t.due !== '' && !DATE_RE.test(t.due)) return `Échéance invalide (tâche #${t.id}).`;
   }
   for (const t of p.tasks) for (const d of t.deps) if (!ids.has(d)) return `La tâche #${t.id} dépend d'une tâche inexistante (#${d}).`;
