@@ -81,6 +81,8 @@ function validate(p) {
     if (!STATUSES.has(t.status)) return `Statut invalide (tâche #${t.id}).`;
     if (!Array.isArray(t.deps) || !t.deps.every(Number.isInteger)) return `Dépendances invalides (tâche #${t.id}).`;
     if (t.owner != null && (typeof t.owner !== 'string' || t.owner.length > 100)) return `Responsable invalide (tâche #${t.id}).`;
+    if (t.type != null && t.type !== 'task' && t.type !== 'milestone') return `Type invalide (tâche #${t.id}).`;
+    if (t.type === 'milestone' && t.status === 'doing') return `Un jalon ne peut pas être « en cours » (tâche #${t.id}).`;
     if (t.description != null && (typeof t.description !== 'string' || t.description.length > 5000)) return `Description invalide ou trop longue (tâche #${t.id}, 5000 caractères max).`;
     if (t.due != null && t.due !== '' && !DATE_RE.test(t.due)) return `Échéance invalide (tâche #${t.id}).`;
   }

@@ -30,6 +30,7 @@
       </div>
     </div>
     <div class="progress"><div class="bar"><i id="barFill"></i></div><span class="pct" id="pct"></span><span class="late-pill" id="lateCount"></span></div>
+    <div class="next-ms" id="nextMs" hidden></div>
   </header>
 
   <aside>
@@ -54,6 +55,7 @@
       <form class="add" id="addForm">
         <input id="newTitle" type="text" placeholder="Ex. Valider le budget" autocomplete="off" aria-label="Titre de la nouvelle tâche">
         <textarea id="newDesc" rows="2" placeholder="Description (facultatif)" aria-label="Description de la nouvelle tâche"></textarea>
+        <label class="check" for="newMs"><input type="checkbox" id="newMs"> <span>C'est un <b>jalon</b> <span class="hint">(point de passage daté, sans durée)</span></span></label>
         <div class="grid2">
           <div><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
           <div><label class="label" for="newDue">Échéance</label><input id="newDue" type="date"></div>
@@ -84,6 +86,7 @@
         <span><i class="dot doing"></i>En cours</span>
         <span><i class="dot blocked"></i>Bloquée</span>
         <span><i class="dot done"></i>Faite</span>
+        <span><i class="dia-lg" aria-hidden="true"></i>Jalon</span>
         <span class="seq-only"><i class="ln-bad"></i>Prérequis prévu après</span>
       </div>
       <label class="filter-who" for="whoFilter">Responsable
