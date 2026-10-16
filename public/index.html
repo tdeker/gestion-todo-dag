@@ -25,6 +25,7 @@
         <div class="proj-actions">
           <button type="button" role="menuitem" data-pact="new">+ Nouveau projet</button>
           <button type="button" role="menuitem" data-pact="sample">+ Projet d'exemple</button>
+          <button type="button" role="menuitem" data-pact="sampleBig">+ Exemple volumineux (~130 tâches)</button>
           <button type="button" role="menuitem" class="danger" data-pact="delete">Supprimer ce projet</button>
         </div>
       </div>
@@ -75,6 +76,7 @@
         <div class="seg seg-2" role="group" aria-label="Vue">
           <button type="button" data-view="seq">Séquence</button>
           <button type="button" data-view="kanban">Kanban</button>
+          <button type="button" data-view="table">Tableau</button>
         </div>
         <div class="seg seg-2" role="group" aria-label="Colonnes du Kanban" id="kbGroup">
           <button type="button" data-group="status">Par statut</button>
@@ -93,8 +95,26 @@
         <select id="whoFilter"></select>
       </label>
     </div>
+    <div class="toolbar">
+      <div class="search">
+        <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="search" id="q" placeholder="Rechercher (titre, description, personne, #n°)" aria-label="Rechercher une tâche" autocomplete="off">
+        <kbd title="Raccourci clavier">/</kbd>
+      </div>
+      <span class="q-count" id="qCount" aria-live="polite"></span>
+      <label class="check" for="hideDone"><input type="checkbox" id="hideDone"> Masquer les faites <span class="muted" id="doneCount"></span></label>
+      <div class="tb-right seq-only">
+        <div class="seg seg-3" role="group" aria-label="Échelle de temps">
+          <button type="button" data-zoom="day">Jour</button>
+          <button type="button" data-zoom="week">Semaine</button>
+          <button type="button" data-zoom="month">Mois</button>
+        </div>
+        <button class="btn" type="button" id="goToday">Aujourd'hui</button>
+      </div>
+    </div>
     <div class="canvas" id="canvas"><svg id="g" xmlns="http://www.w3.org/2000/svg"></svg></div>
     <div class="kanban" id="kanban" hidden></div>
+    <div class="table-view" id="tableView" hidden></div>
     <p class="hint kb-help" id="kbHelp" hidden></p>
   </section>
 </div>
