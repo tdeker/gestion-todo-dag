@@ -8,6 +8,11 @@ Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 - Contrôle de cohérence : une tâche prévue avant l'un de ses prérequis est signalée.
 - Filtre par responsable (« mes tâches »).
 - **Description** libre sur chaque tâche (fiche de la tâche et formulaire d'ajout), affichée sur les cartes Kanban et au survol dans le graphe.
+- **Grands projets** :
+  - recherche instantanée (titre, description, personne, n°), touche `/` pour y accéder, Entrée / Maj+Entrée pour passer d'un résultat à l'autre ;
+  - « Masquer les faites » (graphe et Kanban) ;
+  - échelle de temps **Jour / Semaine / Mois** avec zoom sémantique : cartes détaillées, puis compactes, puis pastilles (vue d'ensemble du projet, flèches de la sélection uniquement) ; liens redondants masqués en Semaine et Mois ; bouton « Aujourd'hui » ;
+  - préférences mémorisées par navigateur ; projet d'exemple volumineux (~130 tâches) dans le menu.
 - **Jalons** : type de tâche « Jalon » (point de passage daté, sans état « en cours »). Forme de fanion pointant sur sa date dans le graphe, repère sur l'axe, badge dans le Kanban, prochain jalon affiché en haut de page. Se crée en cochant « C'est un jalon » ou en changeant le type dans la fiche.
 - **Vue Kanban**, alternative à la vue en séquence : colonnes **par statut** (glisser une carte change son statut, en respectant les dépendances) ou **par personne** (glisser change le responsable). La vue choisie est mémorisée.
 - **Plusieurs projets**, via le menu « Projets » : créer, ouvrir, renommer, supprimer (icône corbeille sur chaque projet de la liste, avec confirmation). Le dernier projet ouvert est mémorisé.

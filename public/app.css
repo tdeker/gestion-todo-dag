@@ -61,8 +61,8 @@ button,select,input[type=text]{font:inherit;color:inherit}
 .btn.danger{color:var(--danger)} .btn.danger.armed{background:var(--danger);border-color:var(--danger);color:var(--surface)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-input[type=text],input[type=date],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:7px 9px;font:inherit;color:inherit;min-width:0}
-input[type=text]:focus,input[type=date]:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
+input[type=text],input[type=search],input[type=date],select,textarea{width:100%;border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:7px 9px;font:inherit;color:inherit;min-width:0}
+input[type=text]:focus,input[type=search]:focus,input[type=date]:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent)}
 form.add{display:flex;flex-direction:column;gap:8px}
 
 .seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:7px;overflow:hidden}
@@ -271,3 +271,33 @@ textarea{resize:vertical;min-height:60px;line-height:1.45}
 .next-ms b.late{color:var(--danger)} .next-ms b.soon{color:var(--doing)}
 .linkish{border:0;background:none;padding:0;font:inherit;font-weight:600;color:var(--ink);cursor:pointer;text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:3px}
 .linkish:hover{color:var(--accent);text-decoration-color:var(--accent)}
+
+/* ---------- Grands projets : barre d'outils, zoom, recherche ---------- */
+.toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 14px;border-bottom:1px solid var(--line)}
+.search{position:relative;display:flex;align-items:center;flex:1 1 260px;max-width:420px;min-width:0}
+.search svg{position:absolute;left:9px;color:var(--muted);pointer-events:none}
+.search input{padding-left:30px;padding-right:30px}
+.search input::-webkit-search-cancel-button{margin-right:18px}
+.search kbd{position:absolute;right:7px;pointer-events:none}
+.search input:focus + kbd,.search input:not(:placeholder-shown) + kbd{display:none}
+.q-count{font:600 12px var(--f-mono);color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap}
+.q-count.none{color:var(--muted)}
+.muted{color:var(--muted)}
+.tb-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.seg.seg-3{grid-template-columns:repeat(3,auto)}
+.seg.seg-3 button{padding:5px 11px}
+svg.searching .node:not(.match){opacity:.18}
+svg.searching .edge{opacity:.15}
+svg.searching .node.match rect.box,svg.searching .node.match path.box{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:none}
+.kanban.searching .kcard:not(.match){opacity:.25}
+.kanban.searching .kcard.match{outline:2px solid var(--accent);outline-offset:1px}
+.node .title.sm{font-size:11.5px}
+svg[data-zoom=week] .node .title{font-size:12.5px}
+svg[data-zoom=week] .node .meta{font-size:11px}
+svg[data-zoom=month] .halo,svg[data-zoom=week] .halo{display:none}
+svg[data-zoom=month] .node.ready rect.box{stroke-width:2}
+svg[data-zoom=week] .edge.ok,svg[data-zoom=week] .edge.wait{opacity:.45}
+svg[data-zoom=month] .node rect.box{stroke-width:1.5}
+svg[data-zoom=month] .node.sel rect.box,svg[data-zoom=month] .node.sel path.box{stroke:var(--accent);stroke-width:3}
+.node .ms-lbl{font:600 11px var(--f-ui);fill:var(--ms);paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+.node.done .ms-lbl{fill:var(--done)}

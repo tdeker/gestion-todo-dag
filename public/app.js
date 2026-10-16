@@ -34,6 +34,38 @@ const SAMPLE = {
     {id:10, title:'Mise en ligne', status:'todo', type:'milestone', deps:[9], owner:'Claire', due:inDays(23), description:'Bascule DNS, vérification du certificat HTTPS, annonce interne.'}
   ]
 };
+// Exemple volumineux (~130 tâches) pour essayer les outils des grands projets. Généré de façon reproductible.
+function bigSample(){
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const pick = a => a[Math.floor(rnd() * a.length)];
+  const people = ['Claire', 'Lucas', 'Mehdi', 'Sophie', 'Inès', 'Paul', 'Nora'];
+  const phases = ['Cadrage', 'Conception', 'Maquettes', 'Développement front', 'Développement API', 'Données', 'Recette', 'Formation', 'Déploiement'];
+  const verbs = ['Spécifier', 'Valider', 'Rédiger', 'Développer', 'Tester', 'Revoir', 'Intégrer', 'Documenter', 'Préparer', 'Corriger'];
+  const objs = ['le module de connexion', 'les écrans de saisie', "l'export CSV", "les droits d'accès", 'le tableau de bord', 'les notifications', 'la recherche', 'le paiement', 'les rapports', 'la migration des données', "l'API clients", 'les gabarits e-mail', "la page d'accueil", 'le parcours mobile'];
+  const tasks = []; let id = 1, prevMs = null;
+  phases.forEach((ph, pi) => {
+    const ids = [], n = 11 + Math.floor(rnd() * 6);
+    for (let k = 0; k < n; k++){
+      const off = -45 + pi * 14 + Math.floor(rnd() * 20);
+      const deps = [];
+      if (prevMs) deps.push(prevMs);
+      if (ids.length && rnd() < .5) deps.push(pick(ids));
+      tasks.push({ id, title: `${pick(verbs)} ${pick(objs)}`, status: 'todo', deps: [...new Set(deps)], owner: pick(people), due: inDays(off), description: `Lot ${ph}.` });
+      ids.push(id++);
+    }
+    tasks.push({ id, title: `Fin ${ph}`, type: 'milestone', status: 'todo', deps: ids.slice(-3), owner: 'Claire', due: inDays(-45 + pi * 14 + 22) });
+    prevMs = id++;
+  });
+  // États cohérents avec les dépendances et la date du jour
+  const byI = new Map(tasks.map(t => [t.id, t]));
+  for (const t of tasks){
+    const ok = t.deps.every(d => byI.get(d).status === 'done');
+    const left = daysLeft(t.due);
+    if (ok && left < -3) t.status = 'done';
+    else if (ok && !t.type && left < 6 && rnd() < .4) t.status = 'doing';
+  }
+  return { name: 'Refonte du portail clients (exemple volumineux)', seq: id, tasks };
+}
 let who = '';
 const owners = () => [...new Set(T().map(t => (t.owner || '').trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'fr'));
 const mine = t => !who || (t.owner || '') === who;
@@ -142,6 +174,7 @@ async function openProject(id){
     data = ldb.projects[id];
   }
   store.id = id; selected = null; who = ''; undo = null; hideToast();
+  pendingScroll = 'today'; query = ''; const qi = document.getElementById('q'); if (qi) qi.value = '';
   lsSet(CUR_KEY, id);
   refreshAll();
 }
@@ -238,47 +271,68 @@ const wouldCycle = (id, dep) => id === dep || ancestors(dep).has(id);
 
 /* ---------- Mise en page du graphe ----------
    Axe horizontal = temps : le bord droit de chaque activité tombe sur son échéance.
-   Les activités qui se chevauchent dans le temps sont empilées ; celles sans échéance vont à droite. */
-const NW = 196, NH = 84, GY = 14, PAD = 24, TOP = 28, DAY = 30;
+   Les activités qui se chevauchent dans le temps sont empilées ; celles sans échéance vont à droite.
+   Trois niveaux de zoom : plus on dézoome, plus les cartes sont compactes (zoom sémantique). */
+const ZOOMS = {
+  day:   { DAY: 30, NW: 196, NH: 84, label: 'Jour' },
+  week:  { DAY: 13, NW: 148, NH: 44, label: 'Semaine' },
+  month: { DAY: 6,  NW: 16,  NH: 14, label: 'Mois' }      // vue d'ensemble : une pastille par tâche
+};
+let zoom = 'day', hideDone = false, query = '', NW = 196, NH = 84, DAY = 30, lastL = null, pendingScroll = 'today';
+const GY = 14, PAD = 24, TOP = 28;
 const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
 const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / 864e5);
-function layout(){
-  const dated = T().filter(t => t.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
-  const undated = T().filter(t => !t.due);
+const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+// Tâches affichées (les tâches faites peuvent être masquées, sauf la tâche sélectionnée)
+const visible = () => T().filter(t => !(hideDone && t.status === 'done' && t.id !== selected));
+const hiddenCount = () => hideDone ? T().filter(t => t.status === 'done' && t.id !== selected).length : 0;
+function matches(t){
+  if (!query) return true;
+  const q = norm(query).trim();
+  if (/^#?\d+$/.test(q)) return String(t.id) === q.replace('#', '');
+  return norm(t.title + ' ' + (t.description || '') + ' ' + (t.owner || '')).includes(q);
+}
+
+function layout(tasks){
+  ({ NW, NH, DAY } = ZOOMS[zoom]);
+  const gy = zoom === 'month' ? 5 : zoom === 'week' ? 10 : GY;
+  const ids = new Set(tasks.map(t => t.id));
+  const dated = tasks.filter(t => t.due).sort((a, b) => a.due.localeCompare(b.due) || a.id - b.id);
+  const undated = tasks.filter(t => !t.due);
   let min = iso(TODAY), max = iso(TODAY);
   dated.forEach(t => { if (t.due < min) min = t.due; if (t.due > max) max = t.due; });
-  min = addDays(min, -Math.ceil(NW / DAY) - 1); max = addDays(max, 3);
+  min = addDays(min, -Math.ceil(NW / DAY) - (zoom === 'month' ? 10 : 3)); max = addDays(max, zoom === 'month' ? 30 : 7);
   const X = s => PAD + (diffDays(min, s) + 1) * DAY;      // fin de la journée s
   const laneEnd = [], laneOf = {}, xy = {};
   for (const t of dated){
     const right = X(t.due) - (isMs(t) ? DAY / 2 : 0), left = right - NW;   // un jalon pointe sur le milieu du jour
-    const free = l => laneEnd[l] == null || laneEnd[l] + 10 <= left;
+    const free = l => laneEnd[l] == null || laneEnd[l] + (zoom === 'month' ? 3 : 8) <= left;
     // on garde si possible la ligne d'un prérequis, pour des flèches plus droites
-    let lane = t.deps.map(d => laneOf[d]).find(l => l != null && free(l));
+    let lane = t.deps.filter(d => ids.has(d)).map(d => laneOf[d]).find(l => l != null && free(l));
     if (lane == null){ lane = 0; while (!free(lane)) lane++; }
     laneEnd[lane] = right; laneOf[t.id] = lane;
-    xy[t.id] = {x: left, y: TOP + lane * (NH + GY)};
+    xy[t.id] = {x: left, y: TOP + lane * (NH + gy)};
   }
   const axisEnd = X(max) + PAD;
   const ux = undated.length ? axisEnd + 48 : null;
-  undated.forEach((t, i) => xy[t.id] = {x: ux, y: TOP + i * (NH + GY)});
+  undated.forEach((t, i) => xy[t.id] = {x: ux, y: TOP + i * (NH + gy)});
   const rows = Math.max(laneEnd.length, undated.length, 1);
-  const axisY = TOP + rows * (NH + GY) - GY + 18;
+  const axisY = TOP + rows * (NH + gy) - gy + 18;
   return {xy, min, max, X, axisY, axisEnd, ux, w: ux != null ? ux + NW + PAD : axisEnd, h: axisY + 50};
 }
 
-function drawAxis(L){
+function drawAxis(L, tasks){
   const {min, max, X, axisY, axisEnd, ux} = L;
   let out = '';
   const days = diffDays(min, max) + 1;
-  for (let i = 0; i < days; i++){
-    const d = addDays(min, i), dt = parse(d), x0 = X(d) - DAY, wd = dt.getDay();
+  if (zoom !== 'month') for (let i = 0; i < days; i++){
+    const d = addDays(min, i), x0 = X(d) - DAY, wd = parse(d).getDay();
     if (wd === 0 || wd === 6) out += `<rect class="ax-we" x="${x0}" y="${TOP - 10}" width="${DAY}" height="${axisY - TOP + 10}"/>`;
   }
   const tx = X(iso(TODAY)) - DAY / 2;
   out += `<line class="ax-today" x1="${tx}" x2="${tx}" y1="${TOP - 8}" y2="${axisY}"/>
     <text class="ax-todaylbl" x="${tx}" y="${TOP - 13}" text-anchor="middle">Aujourd'hui</text>`;
-  for (const t of T()){
+  for (const t of tasks){
     const p = L.xy[t.id];
     if (isMs(t) && t.due && p) out += `<line class="ax-ms ${state(t)}" x1="${p.x + NW}" x2="${p.x + NW}" y1="${p.y + NH / 2}" y2="${axisY}"/>
       <path class="ax-ms-mark ${state(t)}" d="M${p.x + NW} ${axisY - 6} l6 6 l-6 6 l-6 -6 z"/>`;
@@ -289,71 +343,130 @@ function drawAxis(L){
   }
   out += `<line class="ax-line" x1="${PAD}" x2="${axisEnd - PAD / 2}" y1="${axisY}" y2="${axisY}"/>`;
   for (let i = 0; i < days; i++){
-    const d = addDays(min, i), dt = parse(d), xc = X(d) - DAY / 2, first = dt.getDate() === 1 || i === 0;
-    out += `<line class="ax-tick" x1="${X(d) - DAY}" x2="${X(d) - DAY}" y1="${axisY}" y2="${axisY + (first ? 30 : 5)}"/>`;
-    out += `<text class="ax-day ${dt.getDay() % 6 === 0 ? 'we' : ''} ${d === iso(TODAY) ? 'now' : ''}" x="${xc}" y="${axisY + 17}" text-anchor="middle">${dt.getDate()}</text>`;
-    if (first) out += `<text class="ax-month" x="${X(d) - DAY + 5}" y="${axisY + 40}">${esc(dt.toLocaleDateString('fr-FR', {month:'long', year:'numeric'}))}</text>`;
+    const d = addDays(min, i), dt = parse(d), x0 = X(d) - DAY, first = dt.getDate() === 1 || i === 0;
+    const monday = dt.getDay() === 1;
+    if (zoom === 'day'){
+      out += `<line class="ax-tick" x1="${x0}" x2="${x0}" y1="${axisY}" y2="${axisY + (first ? 30 : 5)}"/>`;
+      out += `<text class="ax-day ${dt.getDay() % 6 === 0 ? 'we' : ''} ${d === iso(TODAY) ? 'now' : ''}" x="${x0 + DAY / 2}" y="${axisY + 17}" text-anchor="middle">${dt.getDate()}</text>`;
+    } else if (zoom === 'week'){
+      if (monday || first) out += `<line class="ax-tick" x1="${x0}" x2="${x0}" y1="${axisY}" y2="${axisY + (first ? 30 : 6)}"/>`;
+      if (monday) out += `<text class="ax-day" x="${x0 + 3}" y="${axisY + 17}">${dt.getDate()}</text>`;
+    } else {
+      if (monday) out += `<line class="ax-tick" x1="${x0}" x2="${x0}" y1="${axisY}" y2="${axisY + 4}"/>`;
+      if (first) out += `<line class="ax-tick" x1="${x0}" x2="${x0}" y1="${axisY}" y2="${axisY + 30}"/>`;
+    }
+    if (first){
+      const lab = zoom === 'month' ? dt.toLocaleDateString('fr-FR', {month:'short', year: dt.getMonth() === 0 || i === 0 ? 'numeric' : undefined})
+                                   : dt.toLocaleDateString('fr-FR', {month:'long', year:'numeric'});
+      out += `<text class="ax-month" x="${x0 + 5}" y="${axisY + (zoom === 'month' ? 20 : 40)}">${esc(lab)}</text>`;
+    }
   }
   if (ux != null) out += `<line class="ax-sep" x1="${ux - 24}" x2="${ux - 24}" y1="${TOP - 10}" y2="${axisY}"/>
     <text class="ax-todaylbl ax-none" x="${ux}" y="${TOP - 13}">Sans échéance</text>`;
   return out;
 }
 
-function wrap(text, max = 25){
+function wrap(text, max = 25, maxLines = 2){
   const words = text.split(/\s+/), lines = [];
   let cur = '';
   for (const w of words){
     if ((cur + ' ' + w).trim().length > max && cur){ lines.push(cur); cur = w; } else cur = (cur + ' ' + w).trim();
   }
   if (cur) lines.push(cur);
-  if (lines.length > 2){ lines.length = 2; lines[1] = lines[1].slice(0, max - 1) + '…'; }
+  if (lines.length > maxLines){ lines.length = maxLines; lines[maxLines - 1] = lines[maxLines - 1].slice(0, max - 1) + '…'; }
   return lines.map(l => l.length > max ? l.slice(0, max - 1) + '…' : l);
 }
 
 function drawGraph(){
   const svg = document.getElementById('g');
-  if (!T().length){ svg.setAttribute('width', 360); svg.setAttribute('height', 120);
-    svg.innerHTML = `<text x="28" y="60" class="title" style="fill:var(--muted);font:14px var(--f-ui)">Aucune tâche. Ajoutez-en une à gauche.</text>`; return; }
-  const L = layout(), {xy, w, h} = L;
+  const tasks = visible();
+  if (!tasks.length){ svg.setAttribute('width', 420); svg.setAttribute('height', 120); svg.removeAttribute('viewBox');
+    svg.innerHTML = `<text x="28" y="60" class="title" style="fill:var(--muted);font:14px var(--f-ui)">${T().length ? 'Toutes les tâches sont faites (masquées).' : 'Aucune tâche. Ajoutez-en une à gauche.'}</text>`; lastL = null; return; }
+  const L = lastL = layout(tasks), {xy, w, h} = L;
   const anc = selected ? ancestors(selected) : new Set(), desc = selected ? descendants(selected) : new Set();
   const chain = selected ? new Set([selected, ...anc, ...desc]) : null;
   svg.setAttribute('width', w); svg.setAttribute('height', h); svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-  svg.classList.toggle('focus', !!chain);
+  svg.classList.toggle('focus', !!chain && !query);
   svg.classList.toggle('filter', !!who);
-  let out = `<defs>${['ok','wait','hi','bad'].map(k => `<marker id="m-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-${k}"/></marker>`).join('')}</defs>` + drawAxis(L);
-  for (const t of T()) for (const d of t.deps){
+  svg.classList.toggle('searching', !!query);
+  svg.dataset.zoom = zoom;
+  let out = `<defs>${['ok','wait','hi','bad'].map(k => `<marker id="m-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-${k}"/></marker>`).join('')}</defs>` + drawAxis(L, tasks);
+  // Liens redondants (A→C alors que A→B→C) : masqués aux zooms Semaine et Mois pour alléger
+  const anc0 = new Map(); const ancOf = id => { if (!anc0.has(id)) anc0.set(id, ancestors(id)); return anc0.get(id); };
+  const redundant = (t, d) => zoom !== 'day' && t.deps.some(o => o !== d && ancOf(o).has(d));
+  for (const t of tasks) for (const d of t.deps){
     const a = xy[d], b = xy[t.id]; if (!a || !b) continue;
-    const x1 = a.x + NW, y1 = a.y + NH/2, x2 = b.x - 2, y2 = b.y + NH/2, c = Math.max(40, Math.abs(x2 - x1) / 2);
+    if (redundant(t, d)) continue;
+    const x1 = a.x + NW, y1 = a.y + NH/2, x2 = b.x - 2, y2 = b.y + NH/2, c = Math.max(zoom === 'month' ? 16 : 40, Math.abs(x2 - x1) / 2);
     const up = x => x === selected || anc.has(x), down = x => x === selected || desc.has(x);
     const hi = chain && ((up(d) && up(t.id)) || (down(d) && down(t.id)));
     const dd = byId(d), bad = dd.status !== 'done' && dd.due && t.due && dd.due > t.due;
     const k = hi ? 'hi' : bad ? 'bad' : (dd.status === 'done' ? 'ok' : 'wait');
+    if (zoom === 'month' && !hi) continue;          // vue d'ensemble : flèches de la sélection uniquement
     out += `<path class="edge ${k}" d="M${x1} ${y1}C${x1 + c} ${y1} ${x2 - c} ${y2} ${x2} ${y2}" marker-end="url(#m-${k})"/>`;
   }
-  for (const t of T()){
+  for (const t of tasks){
     const {x, y} = xy[t.id], s = state(t);
     const ms = isMs(t);
-    const lines = wrap(t.title, ms ? 22 : 25);
     const di = dueInfo(t);
     const own = (t.owner || '').trim();
-    const ownTxt = own ? (own.length > 14 ? own.slice(0, 13) + '…' : own) : 'Non assignée';
     const dueTxt = t.due ? (di.cls === 'late' ? `⚠ ${fmtDate(t.due)}` : fmtDate(t.due)) : '—';
-    const cls = ['node', s, ms ? 'ms' : '', t.id === selected ? 'sel' : '', chain && chain.has(t.id) ? 'chain' : '', mine(t) ? '' : 'other'].join(' ');
-    const P = 26, flag = (o) => `M${8 - o} ${-o} H${NW - P + o * .4} L${NW + o * 1.4} ${NH / 2} L${NW - P + o * .4} ${NH + o} H${8 - o} Q${-o} ${NH + o} ${-o} ${NH - 8} V8 Q${-o} ${-o} ${8 - o} ${-o} Z`;
-    const R = ms ? NW - P - 4 : NW - 12;   // bord droit utile pour le texte
-    out += `<g class="${cls}" data-id="${t.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${ms ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(own || 'non assignée')}, ${esc(di.txt)}">
-      <title>${ms ? 'Jalon : ' : ''}${esc(t.title)}${t.description ? '\n\n' + esc(t.description) : ''}</title>
-      ${ms ? `<path class="halo" d="${flag(5)}"/><path class="box" d="${flag(0)}"/>`
-           : `<rect class="halo" x="-5" y="-5" width="${NW+10}" height="${NH+10}" rx="12"/><rect class="box" width="${NW}" height="${NH}" rx="8"/>`}
-      <text class="tag" x="12" y="17">${tagTxt(t, s)}</text>
+    const cls = ['node', s, ms ? 'ms' : '', t.id === selected ? 'sel' : '', chain && chain.has(t.id) ? 'chain' : '', mine(t) ? '' : 'other', query && matches(t) ? 'match' : ''].join(' ');
+    const P = zoom === 'day' ? 26 : NH / 2 - 2;
+    const flag = (o) => `M${6 - o} ${-o} H${NW - P + o * .4} L${NW + o * 1.4} ${NH / 2} L${NW - P + o * .4} ${NH + o} H${6 - o} Q${-o} ${NH + o} ${-o} ${NH - 6} V6 Q${-o} ${-o} ${6 - o} ${-o} Z`;
+    const R = ms ? NW - P - 4 : NW - (zoom === 'month' ? 6 : 12);   // bord droit utile pour le texte
+    const shape = zoom === 'month'
+      ? (ms ? `<path class="box" d="M${NW} ${-3} L${NW + 10} ${NH / 2} L${NW} ${NH + 3} L${NW - 10} ${NH / 2} Z"/>` : `<rect class="box" width="${NW}" height="${NH}" rx="${NH / 2}"/>`)
+      : ms ? `<path class="halo" d="${flag(5)}"/><path class="box" d="${flag(0)}"/>`
+                     : `<rect class="halo" x="-5" y="-5" width="${NW+10}" height="${NH+10}" rx="${zoom === 'month' ? 8 : 12}"/><rect class="box" width="${NW}" height="${NH}" rx="${zoom === 'month' ? 5 : 8}"/>`;
+    let body;
+    if (zoom === 'day'){
+      const lines = wrap(t.title, ms ? 22 : 25);
+      const ownTxt = own ? (own.length > 14 ? own.slice(0, 13) + '…' : own) : 'Non assignée';
+      body = `<text class="tag" x="12" y="17">${tagTxt(t, s)}</text>
       ${ms ? '' : `<text class="num" x="${NW-12}" y="17" text-anchor="end">#${t.id}</text>`}
       ${lines.map((l,i) => `<text class="title" x="12" y="${lines.length === 1 ? 41 : 36 + i*16}">${esc(l)}</text>`).join('')}
       <line class="sep" x1="12" x2="${R}" y1="${NH-22}" y2="${NH-22}"/>
       <text class="meta ${own ? '' : 'none'}" x="12" y="${NH-8}">${esc(ownTxt)}</text>
-      <text class="meta due ${di.cls}" x="${R}" y="${NH-8}" text-anchor="end">${esc(dueTxt)}</text>
+      <text class="meta due ${di.cls}" x="${R}" y="${NH-8}" text-anchor="end">${esc(dueTxt)}</text>`;
+    } else if (zoom === 'week'){
+      const [l1] = wrap(t.title, ms ? 18 : 22, 1);
+      const ownTxt = own ? (own.length > 10 ? own.slice(0, 9) + '…' : own) : '—';
+      body = `<text class="title" x="10" y="20">${ms ? '◆ ' : ''}${esc(l1)}</text>
+      <text class="meta ${own ? '' : 'none'}" x="10" y="38">${esc(ownTxt)}</text>
+      <text class="meta due ${di.cls}" x="${R}" y="38" text-anchor="end">${esc(dueTxt)}</text>`;
+    } else {
+      // Mois : pastille sans texte ; seuls les jalons gardent leur nom (à gauche de la pointe)
+      body = ms ? `<text class="ms-lbl" x="${-6}" y="${NH / 2 + 4}" text-anchor="end">${esc(wrap(t.title, 22, 1)[0])}</text>` : '';
+    }
+    out += `<g class="${cls}" data-id="${t.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${ms ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(own || 'non assignée')}, ${esc(di.txt)}">
+      <title>${ms ? 'Jalon : ' : ''}${esc(t.title)} — ${esc(own || 'non assignée')}, ${esc(di.txt)}${t.description ? '\n\n' + esc(t.description) : ''}</title>
+      ${shape}${body}
     </g>`;
   }
   svg.innerHTML = out;
+  applyPendingScroll();
+}
+
+/* Défilement de la vue séquence : centrer sur aujourd'hui, sur une date ou sur une tâche */
+function xOfDate(d){ return lastL ? lastL.X(d) - DAY / 2 : 0; }
+function dateAtCenter(){
+  const c = document.getElementById('canvas');
+  if (!lastL) return iso(TODAY);
+  return addDays(lastL.min, Math.floor((c.scrollLeft + c.clientWidth / 2 - PAD) / DAY) - 1);
+}
+function applyPendingScroll(){
+  if (!pendingScroll || !lastL || view !== 'seq') return;
+  const c = document.getElementById('canvas');
+  if (!c.clientWidth) return;
+  const p = pendingScroll; pendingScroll = null;
+  if (p === 'today') c.scrollLeft = Math.max(0, xOfDate(iso(TODAY)) - c.clientWidth / 3);
+  else if (p.date) c.scrollLeft = Math.max(0, xOfDate(p.date) - c.clientWidth / 2);
+  else if (p.id && lastL.xy[p.id]){
+    const q = lastL.xy[p.id];
+    c.scrollLeft = Math.max(0, q.x + NW / 2 - c.clientWidth / 2);
+    c.scrollTop = Math.max(0, q.y + NH / 2 - c.clientHeight / 2);
+  }
 }
 
 /* ---------- Vue Kanban ----------
@@ -361,8 +474,14 @@ function drawGraph(){
    ou par personne (glisser = changer de responsable). */
 const UI_KEY = 'graphe-taches-vue';
 let view = 'seq', group = 'status', dragId = null;
-try { const v = JSON.parse(lsGet(UI_KEY) || '{}'); if (v.view === 'kanban') view = 'kanban'; if (v.group === 'owner') group = 'owner'; } catch(e){}
-const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group }));
+try {
+  const v = JSON.parse(lsGet(UI_KEY) || '{}');
+  if (v.view === 'kanban') view = 'kanban';
+  if (v.group === 'owner') group = 'owner';
+  if (ZOOMS[v.zoom]) zoom = v.zoom;
+  hideDone = !!v.hideDone;
+} catch(e){}
+const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group, zoom, hideDone }));
 const ORDER = { doing: 0, ready: 1, blocked: 2, done: 3 };
 const byDueId = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.id - b.id;
 const initials = n => n.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -373,17 +492,18 @@ function kanbanCols(){
     { key: 'ready',   label: 'Prêtes',   dot: 'ready',   hint: 'Peuvent démarrer' },
     { key: 'doing',   label: 'En cours', dot: 'doing' },
     { key: 'done',    label: 'Faites',   dot: 'done' }
-  ].map(c => ({ ...c, tasks: T().filter(t => state(t) === c.key).sort(byDueId) }));
+  ].map(c => ({ ...c, tasks: visible().filter(t => state(t) === c.key).sort(byDueId) }));
   const sortOwner = (a, b) => ORDER[state(a)] - ORDER[state(b)] || byDueId(a, b);
-  const cols = owners().map(o => ({ key: 'o:' + o, owner: o, label: o, tasks: T().filter(t => (t.owner || '').trim() === o).sort(sortOwner) }));
-  cols.push({ key: 'o:', owner: '', label: 'Non assignée', tasks: T().filter(t => !(t.owner || '').trim()).sort(sortOwner) });
+  const V = visible();
+  const cols = owners().map(o => ({ key: 'o:' + o, owner: o, label: o, tasks: V.filter(t => (t.owner || '').trim() === o).sort(sortOwner) }));
+  cols.push({ key: 'o:', owner: '', label: 'Non assignée', tasks: V.filter(t => !(t.owner || '').trim()).sort(sortOwner) });
   return cols;
 }
 function kcard(t){
   const s = state(t), di = dueInfo(t);
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
   const kids = children(t.id).length;
-  const cls = ['kcard', s, isMs(t) ? 'ms' : '', t.id === selected ? 'sel' : '', mine(t) ? '' : 'other', isLate(t) ? 'late' : ''].join(' ');
+  const cls = ['kcard', s, isMs(t) ? 'ms' : '', t.id === selected ? 'sel' : '', mine(t) ? '' : 'other', isLate(t) ? 'late' : '', query && matches(t) ? 'match' : ''].join(' ');
   return `<article class="${cls}" data-id="${t.id}" draggable="true" tabindex="0" role="button"
       aria-label="${isMs(t) ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(t.owner || 'non assignée')}, ${esc(di.txt)}">
     <div class="khead"><span class="ktag">${tagTxt(t, s)}</span><span class="knum">#${t.id}</span></div>
@@ -401,14 +521,19 @@ function drawKanban(){
   const el = document.getElementById('kanban');
   const cols = kanbanCols();
   el.classList.toggle('filter', !!who);
+  el.classList.toggle('searching', !!query);
+  const nHidden = hiddenCount();
+  const empty = c => c.key === 'done' && nHidden
+    ? `<p class="kempty">${nHidden} tâche${nHidden > 1 ? 's' : ''} faite${nHidden > 1 ? 's' : ''} masquée${nHidden > 1 ? 's' : ''}.<br><button type="button" class="linkish" data-showdone>Afficher</button></p>`
+    : '<p class="kempty">Aucune tâche</p>';
   el.innerHTML = cols.map(c => `
     <section class="kcol ${c.dot ? 'st-' + c.dot : 'by-owner'} ${group === 'owner' && who && c.owner !== who ? 'other' : ''}" data-col="${esc(c.key)}">
       <header>
         ${c.dot ? `<i class="dot ${c.dot}"></i>` : `<span class="avatar ${c.owner ? '' : 'none'}">${c.owner ? esc(initials(c.owner)) : '?'}</span>`}
-        <h3>${esc(c.label)}</h3><b>${c.tasks.length}</b>
+        <h3>${esc(c.label)}</h3><b>${c.key === 'done' && nHidden ? nHidden + c.tasks.length : c.tasks.length}</b>
       </header>
       ${c.hint ? `<p class="khint">${c.hint}</p>` : ''}
-      <div class="klist">${c.tasks.length ? c.tasks.map(kcard).join('') : '<p class="kempty">Aucune tâche</p>'}</div>
+      <div class="klist">${c.tasks.length ? c.tasks.map(kcard).join('') : empty(c)}</div>
     </section>`).join('');
   document.getElementById('kbHelp').textContent = group === 'status'
     ? 'Glissez une carte vers une autre colonne pour changer son statut. Une tâche bloquée ne peut pas passer en cours tant que ses prérequis ne sont pas faits.'
@@ -443,9 +568,44 @@ function syncView(){
   document.querySelector('.graph').classList.toggle('is-kanban', k);
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view));
   document.querySelectorAll('[data-group]').forEach(b => b.setAttribute('aria-pressed', b.dataset.group === group));
+  document.querySelectorAll('[data-zoom]').forEach(b => b.setAttribute('aria-pressed', b.dataset.zoom === zoom));
+  document.getElementById('hideDone').checked = hideDone;
+  const nd = T().filter(t => t.status === 'done').length;
+  document.getElementById('doneCount').textContent = nd ? `(${nd})` : '';
+  const qc = document.getElementById('qCount');
+  if (query){ const n = visible().filter(matches).length; qc.textContent = n ? `${n} résultat${n > 1 ? 's' : ''}` : 'Aucun résultat'; qc.classList.toggle('none', !n); }
+  else qc.textContent = '';
 }
 document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { view = b.dataset.view; saveUi(); render(); }));
 document.querySelectorAll('[data-group]').forEach(b => b.addEventListener('click', () => { group = b.dataset.group; saveUi(); render(); }));
+
+/* ---------- Outils pour les grands projets : zoom, masquer les faites, recherche ---------- */
+document.querySelectorAll('[data-zoom]').forEach(b => b.addEventListener('click', () => {
+  if (b.dataset.zoom === zoom) return;
+  pendingScroll = { date: dateAtCenter() };   // garder la même date au centre
+  zoom = b.dataset.zoom; saveUi(); render();
+}));
+document.getElementById('goToday').addEventListener('click', () => { pendingScroll = 'today'; applyPendingScroll(); });
+document.getElementById('hideDone').addEventListener('change', e => { hideDone = e.target.checked; saveUi(); render(); });
+document.getElementById('kanban').addEventListener('click', e => {
+  if (e.target.closest('[data-showdone]')){ hideDone = false; saveUi(); render(); }
+});
+const qEl = document.getElementById('q');
+let qIndex = -1;
+qEl.addEventListener('input', () => { query = qEl.value; qIndex = -1; drawMain(); syncView(); });
+qEl.addEventListener('keydown', e => {
+  if (e.key === 'Escape'){ e.stopPropagation(); qEl.value = ''; query = ''; drawMain(); syncView(); qEl.blur(); return; }
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const list = visible().filter(matches).sort(byDueId);
+  if (!list.length || !query) return;
+  qIndex = (qIndex + (e.shiftKey ? -1 : 1) + list.length) % list.length;
+  const t = list[qIndex];
+  selected = t.id; pendingScroll = { id: t.id };
+  render();
+  document.getElementById('qCount').textContent = `${qIndex + 1} / ${list.length}`;
+  if (view === 'kanban') document.querySelector(`.kcard[data-id="${t.id}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+});
 
 const kbEl = document.getElementById('kanban');
 kbEl.addEventListener('click', e => {
@@ -683,6 +843,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (isTyping(e.target) || e.altKey) return;
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey){ e.preventDefault(); qEl.focus(); qEl.select(); return; }
   if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && selected){
     e.preventDefault(); deleteTask(selected); return;
   }
@@ -755,6 +916,7 @@ menuEl.addEventListener('click', async e => {
     const n = document.getElementById('projectName'); n.focus(); n.select();
   }
   if (a.dataset.pact === 'sample'){ closeMenu(); await createProject(clone(SAMPLE)); }
+  if (a.dataset.pact === 'sampleBig'){ closeMenu(); await createProject(bigSample()); }
   if (a.dataset.pact === 'delete') armDelete(store.id);
 });
 menuEl.addEventListener('keydown', e => {
