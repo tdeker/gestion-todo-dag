@@ -191,6 +191,7 @@ textarea{resize:vertical;min-height:60px;line-height:1.45}
 /* ---------- Bascule de vue ---------- */
 .views{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .views .seg.seg-2{grid-template-columns:repeat(2,auto)}
+.views .seg:has(> :nth-child(3)){grid-template-columns:repeat(3,auto)}
 .views .seg.seg-2 button{padding:5px 12px;white-space:nowrap}
 .graph.is-kanban .seq-only{display:none}
 .graph.is-kanban{max-height:none}
@@ -301,3 +302,54 @@ svg[data-zoom=month] .node rect.box{stroke-width:1.5}
 svg[data-zoom=month] .node.sel rect.box,svg[data-zoom=month] .node.sel path.box{stroke:var(--accent);stroke-width:3}
 .node .ms-lbl{font:600 11px var(--f-ui);fill:var(--ms);paint-order:stroke;stroke:var(--surface);stroke-width:3px}
 .node.done .ms-lbl{fill:var(--done)}
+
+/* ---------- Vue Tableau ---------- */
+.graph.is-table .legend span:last-child{display:none}
+.table-view{display:flex;flex-direction:column;min-width:0;flex:1}
+.tbl-scroll{overflow:auto;max-height:72vh}
+.tbl{border-collapse:separate;border-spacing:0;width:100%;min-width:1500px;font-size:13px}
+.tbl th{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--line);text-align:left;padding:0;font:600 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tbl th{padding:9px 8px}
+.tbl th:has(> button){padding:0}
+.tbl th > button{display:flex;align-items:center;gap:4px;width:100%;border:0;background:none;padding:9px 8px;font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer;text-align:left}
+.tbl th > button:hover{color:var(--accent)}
+.tbl th[aria-sort=ascending] > button,.tbl th[aria-sort=descending] > button{color:var(--accent)}
+.sort-ind{font-size:9px}
+.tbl td{border-bottom:1px solid var(--line);padding:3px 4px;vertical-align:middle;background:var(--surface)}
+.tbl tr:hover td{background:var(--bg)}
+.tbl tr.sel td{background:var(--accent-soft)}
+.tbl tr.ms td.c-type select,.tbl tr.ms td.c-title input{color:var(--ms);font-weight:600}
+.tbl tr.done td.c-title input{text-decoration:line-through;color:var(--done)}
+/* colonnes figées : n° et titre */
+.tbl .c-id{position:sticky;left:0;z-index:1;width:52px}
+.tbl .c-title{position:sticky;left:52px;z-index:1;min-width:230px;box-shadow:1px 0 0 var(--line)}
+.tbl th.c-id,.tbl th.c-title{z-index:3}
+.tbl .c-id{min-width:52px} .tbl .c-type{min-width:112px} .tbl .c-desc{min-width:240px;width:22%} .tbl .c-status{min-width:200px} .tbl .c-owner{min-width:140px}
+.tbl .c-due{min-width:150px} .tbl .c-deps{min-width:300px} .tbl .c-kids{min-width:84px;text-align:center} .tbl .c-act{min-width:40px}
+.rownum{font:600 11.5px var(--f-mono);color:var(--muted);padding:0 6px;cursor:pointer}
+/* champs intégrés aux cellules : discrets jusqu'au survol ou à la saisie */
+.tbl input[type=text],.tbl input[type=date],.tbl select,.tbl textarea{border:1px solid transparent;background:transparent;border-radius:5px;padding:5px 6px;font-size:13px;min-height:0}
+.tbl input:hover,.tbl select:hover,.tbl textarea:hover{border-color:var(--line)}
+.tbl input:focus,.tbl select:focus,.tbl textarea:focus{border-color:var(--accent);background:var(--surface);outline:none}
+.tbl textarea{resize:none;min-height:30px;height:30px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tbl textarea:focus{height:84px;white-space:pre-wrap;overflow:auto;resize:vertical;position:relative;z-index:1;box-shadow:0 6px 18px rgba(15,20,35,.12)}
+.tbl input.late{color:var(--danger);font-weight:600} .tbl input.soon{color:var(--doing);font-weight:600}
+.due-note{display:block;padding:0 7px;font:600 10.5px var(--f-mono)}
+.due-note.late{color:var(--danger)} .due-note.soon{color:var(--doing)}
+.c-status{white-space:nowrap}
+.c-status select{width:auto;max-width:100%}
+.spill{display:inline-block;margin-left:4px;font:600 10px var(--f-mono);letter-spacing:.04em;padding:1px 6px;border-radius:999px;text-transform:uppercase}
+.spill.ready{background:var(--ready-bg);color:var(--ready)} .spill.doing{background:var(--doing-bg);color:var(--doing)}
+.spill.blocked{background:var(--blocked-bg);color:var(--blocked)} .spill.done{background:var(--done-bg);color:var(--done)}
+.dep-cell{display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:2px}
+.tchip{display:inline-flex;align-items:center;gap:2px;border:1px solid var(--line);border-radius:999px;padding:1px 2px 1px 7px;font-size:11.5px;white-space:nowrap;background:var(--surface)}
+.tchip.done{color:var(--done)} .tchip.blocked{border-style:dashed} .tchip.doing{border-color:var(--doing)} .tchip.ready{border-color:var(--ready)}
+.tchip [data-goto]{cursor:pointer} .tchip [data-goto]:hover{color:var(--accent)}
+.tchip button{border:0;background:none;color:var(--muted);cursor:pointer;width:18px;height:18px;border-radius:50%;line-height:1}
+.tchip button:hover{background:var(--line);color:var(--ink)}
+.tbl select.adddep{width:34px;padding:3px 4px;border:1px dashed var(--line);color:var(--muted);cursor:pointer}
+.row-del{border:0;background:none;color:var(--muted);cursor:pointer;width:28px;height:28px;border-radius:6px;display:grid;place-items:center;opacity:.5}
+.tbl tr:hover .row-del,.row-del:focus-visible{opacity:1}
+.row-del:hover{color:var(--danger);background:var(--danger-soft)}
+.empty-row td{padding:28px;text-align:center;color:var(--muted)}
+.tbl-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);font-size:12.5px}

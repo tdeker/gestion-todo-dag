@@ -472,16 +472,31 @@ function applyPendingScroll(){
 /* ---------- Vue Kanban ----------
    Alternative à la vue en séquence. Colonnes par statut (glisser = changer de statut)
    ou par personne (glisser = changer de responsable). */
+// Tri de la vue Tableau (déclaré ici car relu avec les préférences)
+let tSort = { key: 'due', dir: 1 };
+const STATUS_TXT = { todo: 'À faire', doing: 'En cours', done: 'Faite' };
+const MS_STATUS_TXT = { todo: 'À venir', done: 'Atteint' };
+const SORTS = {
+  id:     t => t.id,
+  type:   t => isMs(t) ? 1 : 0,
+  title:  t => norm(t.title),
+  status: t => ORDER[state(t)],
+  owner:  t => norm(t.owner || '~'),
+  due:    t => t.due || '9999',
+  deps:   t => t.deps.length,
+  kids:   t => children(t.id).length
+};
 const UI_KEY = 'graphe-taches-vue';
 let view = 'seq', group = 'status', dragId = null;
 try {
   const v = JSON.parse(lsGet(UI_KEY) || '{}');
-  if (v.view === 'kanban') view = 'kanban';
+  if (v.view === 'kanban' || v.view === 'table') view = v.view;
+  if (v.tSort && SORTS[v.tSort.key]) tSort = v.tSort;
   if (v.group === 'owner') group = 'owner';
   if (ZOOMS[v.zoom]) zoom = v.zoom;
   hideDone = !!v.hideDone;
 } catch(e){}
-const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group, zoom, hideDone }));
+const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group, zoom, hideDone, tSort }));
 const ORDER = { doing: 0, ready: 1, blocked: 2, done: 3 };
 const byDueId = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.id - b.id;
 const initials = n => n.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
@@ -558,14 +573,16 @@ function moveTo(t, key){
   t.status = key === 'doing' ? 'doing' : key === 'done' ? 'done' : 'todo';
   return null;
 }
-function drawMain(){ if (view === 'kanban') drawKanban(); else drawGraph(); }
+function drawMain(){ if (view === 'kanban') drawKanban(); else if (view === 'table') drawTable(); else drawGraph(); }
 function syncView(){
-  const k = view === 'kanban';
-  document.getElementById('canvas').hidden = k;
+  const k = view === 'kanban', tb = view === 'table';
+  document.getElementById('canvas').hidden = view !== 'seq';
   document.getElementById('kanban').hidden = !k;
+  document.getElementById('tableView').hidden = !tb;
   document.getElementById('kbHelp').hidden = !k;
   document.getElementById('kbGroup').hidden = !k;
-  document.querySelector('.graph').classList.toggle('is-kanban', k);
+  document.querySelector('.graph').classList.toggle('is-kanban', k || tb);
+  document.querySelector('.graph').classList.toggle('is-table', tb);
   document.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === view));
   document.querySelectorAll('[data-group]').forEach(b => b.setAttribute('aria-pressed', b.dataset.group === group));
   document.querySelectorAll('[data-zoom]').forEach(b => b.setAttribute('aria-pressed', b.dataset.zoom === zoom));
@@ -642,6 +659,161 @@ kbEl.addEventListener('drop', e => {
   const err = moveTo(t, col.dataset.col);
   if (err){ render(); showToast(err, false); return; }
   selected = t.id; commit();
+});
+
+/* ---------- Vue Tableau ----------
+   Toutes les tâches et tous leurs attributs ; chaque cellule est modifiable (y compris les dépendances).
+   Les modifications sont enregistrées à la validation du champ (Entrée, Tab ou clic ailleurs). */
+const COLS = [
+  ['id', '#'], ['type', 'Type'], ['title', 'Titre'], [null, 'Description'], ['status', 'Statut'],
+  ['owner', 'Responsable'], ['due', 'Échéance'], ['deps', 'Dépend de'], ['kids', 'Débloque'], [null, '']
+];
+function tableRows(){
+  const f = SORTS[tSort.key];
+  return visible().filter(t => matches(t) && mine(t))
+    .sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * tSort.dir || a.id - b.id; });
+}
+function trow(t){
+  const s = state(t), di = dueInfo(t), ms = isMs(t);
+  const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
+  const canProgress = !blockers.length;
+  const opts = T().filter(o => !t.deps.includes(o.id) && !wouldCycle(t.id, o.id));
+  const statusOpts = ms
+    ? Object.entries(MS_STATUS_TXT).map(([k, l]) => `<option value="${k}" ${t.status === k || (k === 'todo' && t.status !== 'done') ? 'selected' : ''} ${k === 'done' && !canProgress && t.status !== 'done' ? 'disabled' : ''}>${l}</option>`)
+    : Object.entries(STATUS_TXT).map(([k, l]) => `<option value="${k}" ${t.status === k ? 'selected' : ''} ${k !== 'todo' && !canProgress && t.status !== k ? 'disabled' : ''}>${l}</option>`);
+  const kids = children(t.id);
+  return `<tr data-id="${t.id}" class="${s} ${ms ? 'ms' : ''} ${t.id === selected ? 'sel' : ''}">
+    <td class="c-id"><span class="rownum" title="Sélectionner la ligne">#${t.id}</span></td>
+    <td class="c-type"><select data-f="type" aria-label="Type de la tâche ${t.id}">
+      <option value="task" ${ms ? '' : 'selected'}>Tâche</option><option value="milestone" ${ms ? 'selected' : ''}>◆ Jalon</option></select></td>
+    <td class="c-title"><input type="text" data-f="title" value="${esc(t.title)}" aria-label="Titre de la tâche ${t.id}"></td>
+    <td class="c-desc"><textarea data-f="description" rows="1" aria-label="Description de la tâche ${t.id}" placeholder="—">${esc(t.description || '')}</textarea></td>
+    <td class="c-status">
+      <select data-f="status" aria-label="Statut de la tâche ${t.id}">${statusOpts.join('')}</select>
+      <span class="spill ${s}">${esc(lbl(t, s).toLowerCase())}</span>
+    </td>
+    <td class="c-owner"><input type="text" data-f="owner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" aria-label="Responsable de la tâche ${t.id}"></td>
+    <td class="c-due"><input type="date" data-f="due" value="${esc(t.due || '')}" class="${di.cls}" aria-label="Échéance de la tâche ${t.id}">
+      ${t.due && (di.cls === 'late' || di.cls === 'soon') ? `<span class="due-note ${di.cls}">${esc(di.txt.split(' · ').pop())}</span>` : ''}</td>
+    <td class="c-deps"><div class="dep-cell">
+      ${t.deps.map(byId).filter(Boolean).map(d => `<span class="tchip ${state(d)}" title="${esc(d.title)}"><span data-goto="${d.id}">#${d.id} ${esc(d.title.length > 18 ? d.title.slice(0, 17) + '…' : d.title)}</span><button type="button" data-undep="${d.id}" aria-label="Retirer la dépendance ${esc(d.title)}">×</button></span>`).join('')}
+      <select data-f="adddep" class="adddep" aria-label="Ajouter un prérequis à la tâche ${t.id}" ${opts.length ? '' : 'disabled'}>
+        <option value="">＋</option>${opts.map(o => `<option value="${o.id}">#${o.id} ${esc(o.title)}</option>`).join('')}
+      </select></div></td>
+    <td class="c-kids">${kids.length ? `<span title="${esc(kids.map(k => '#' + k.id + ' ' + k.title).join('\n'))}">${kids.length}</span>` : '<span class="muted">—</span>'}</td>
+    <td class="c-act"><button type="button" class="row-del" data-del="${t.id}" aria-label="Supprimer la tâche ${t.id}" title="Supprimer (touche Suppr)">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
+  </tr>`;
+}
+function drawTable(){
+  tblPending = false;
+  const el = document.getElementById('tableView');
+  // Conserver le champ actif (et la position du curseur) à travers le re-dessin
+  const a = document.activeElement, keep = a && el.contains(a) && a.dataset.f ? { id: a.closest('tr')?.dataset.id, f: a.dataset.f, pos: a.selectionStart } : null;
+  const sx = el.querySelector('.tbl-scroll')?.scrollLeft || 0, sy = el.querySelector('.tbl-scroll')?.scrollTop || 0;
+  const rows = tableRows(), total = T().length;
+  el.innerHTML = `
+    <div class="tbl-scroll"><table class="tbl">
+      <thead><tr>${COLS.map(([k, l]) => k
+        ? `<th class="c-${k}" aria-sort="${tSort.key === k ? (tSort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" data-sort="${k}">${l}<span class="sort-ind" aria-hidden="true">${tSort.key === k ? (tSort.dir > 0 ? '▲' : '▼') : ''}</span></button></th>`
+        : `<th>${l}</th>`).join('')}</tr></thead>
+      <tbody>${rows.length ? rows.map(trow).join('') : `<tr class="empty-row"><td colspan="${COLS.length}">${total ? 'Aucune tâche ne correspond aux filtres.' : 'Aucune tâche pour le moment.'}</td></tr>`}</tbody>
+    </table></div>
+    <div class="tbl-foot">
+      <button type="button" class="btn" data-addrow>+ Ajouter une ligne</button>
+      <span class="muted">${rows.length === total ? `${total} tâche${total > 1 ? 's' : ''}` : `${rows.length} affichée${rows.length > 1 ? 's' : ''} sur ${total}`} · cliquez sur un en-tête pour trier</span>
+    </div>`;
+  const sc = el.querySelector('.tbl-scroll'); sc.scrollLeft = sx; sc.scrollTop = sy;
+  if (keep){
+    const f = el.querySelector(`tr[data-id="${keep.id}"] [data-f="${keep.f}"]`);
+    if (f){ f.focus({ preventScroll: true }); try { if (keep.pos != null) f.setSelectionRange(keep.pos, keep.pos); } catch(e){} }
+  }
+}
+function applyCell(t, f, v){
+  if (f === 'title'){ t.title = v.trim() || 'Sans titre'; return null; }
+  if (f === 'description'){ t.description = v; return null; }
+  if (f === 'owner'){ t.owner = v.trim(); return null; }
+  if (f === 'due'){ t.due = v; return null; }
+  if (f === 'type'){
+    if (v === 'milestone'){ t.type = 'milestone'; if (t.status === 'doing') t.status = 'todo'; } else delete t.type;
+    return null;
+  }
+  if (f === 'status'){
+    const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
+    if (v !== 'todo' && blockers.length) return `« ${t.title} » attend encore : ${blockers.map(b => b.title).join(', ')}.`;
+    t.status = v; return null;
+  }
+  if (f === 'adddep' && v){
+    const d = +v;
+    if (wouldCycle(t.id, d)) return 'Impossible : cette dépendance créerait un cycle.';
+    if (!t.deps.includes(d)) t.deps.push(d);
+    if (t.status !== 'todo' && byId(d).status !== 'done') t.status = 'todo';   // un nouveau prérequis non fait bloque la tâche
+    return null;
+  }
+  return null;
+}
+const tblEl = document.getElementById('tableView');
+tblEl.addEventListener('change', e => {
+  const f = e.target.dataset.f; if (!f) return;
+  const t = byId(+e.target.closest('tr').dataset.id); if (!t) return;
+  const err = applyCell(t, f, e.target.value);
+  if (err){ showToast(err, false); drawTable(); return; }
+  selected = t.id;
+  if (f === 'status' || f === 'type' || f === 'adddep'){ commit(); return; }
+  // Champ texte : on enregistre tout de suite, mais on redessine après que le focus a atteint la cellule suivante
+  save(); scheduleTableRender();
+});
+let tblPending = false;
+function scheduleTableRender(){ tblPending = true; setTimeout(flushTableRender, 0); }
+function flushTableRender(){
+  if (!tblPending) return;
+  const a = document.activeElement;
+  if (a && a.tagName === 'SELECT' && tblEl.contains(a)) return;   // ne pas fermer une liste déroulante en cours d'ouverture
+  tblPending = false; render();
+}
+tblEl.addEventListener('focusout', () => setTimeout(flushTableRender, 0));
+// Entrée valide le champ texte et passe à la ligne suivante (comme un tableur)
+tblEl.addEventListener('keydown', e => {
+  const x = e.target;
+  if (e.key === 'Enter' && x.matches('input[type=text], input[type=date]')){
+    e.preventDefault();
+    const tr = x.closest('tr'), next = (e.shiftKey ? tr.previousElementSibling : tr.nextElementSibling);
+    const f = x.dataset.f;
+    x.blur();
+    const tgt = next && tblEl.querySelector(`tr[data-id="${next.dataset.id}"] [data-f="${f}"]`);
+    if (tgt) tgt.focus();
+  }
+  if (e.key === 'Escape' && x.dataset.f){ e.stopPropagation(); drawTable(); x.blur?.(); }
+});
+tblEl.addEventListener('focusin', e => {
+  const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+  const id = +tr.dataset.id;
+  if (selected === id) return;
+  selected = id;
+  tblEl.querySelectorAll('tr.sel').forEach(r => r.classList.remove('sel'));
+  tr.classList.add('sel');
+  renderSide();
+});
+tblEl.addEventListener('click', e => {
+  const s = e.target.closest('[data-sort]');
+  if (s){ const k = s.dataset.sort; tSort = { key: k, dir: tSort.key === k ? -tSort.dir : 1 }; saveUi(); drawTable(); return; }
+  const u = e.target.closest('[data-undep]');
+  if (u){ const t = byId(+u.closest('tr').dataset.id); t.deps = t.deps.filter(d => d !== +u.dataset.undep); selected = t.id; commit(); return; }
+  const g = e.target.closest('[data-goto]');
+  if (g){ selected = +g.dataset.goto; render(); tblEl.querySelector(`tr[data-id="${g.dataset.goto}"]`)?.scrollIntoView({ block: 'center' }); return; }
+  const d = e.target.closest('[data-del]');
+  if (d){ deleteTask(+d.dataset.del); return; }
+  if (e.target.closest('[data-addrow]')){
+    const id = data.seq++;
+    T().push({ id, title: 'Nouvelle tâche', status: 'todo', deps: [], owner: '', due: '', description: '' });
+    selected = id; query = ''; document.getElementById('q').value = '';
+    tSort = { key: 'id', dir: 1 }; commit();
+    const inp = tblEl.querySelector(`tr[data-id="${id}"] [data-f="title"]`);
+    inp?.scrollIntoView({ block: 'center' }); inp?.focus(); inp?.select();
+    return;
+  }
+  const tr = e.target.closest('tr[data-id]');
+  if (tr && !e.target.closest('input, select, textarea, button')){ selected = +tr.dataset.id; render(); }
 });
 
 /* ---------- Panneau ---------- */
