@@ -503,3 +503,26 @@ kbd{border-radius:6px;font-family:var(--f-ui);font-weight:800}
 .search kbd{right:10px}
 .tbl tr.done td.c-title input{color:var(--muted)}
 @media (max-width:500px){#projectName{font-size:22px} .brand .eyebrow{display:none}}
+
+/* ---------- État « En attente » : suspendue par un élément extérieur ----------
+   Même famille que « En cours » (moutarde) mais en pointillés sur fond crème, avec le signe « ‖ » : distinct sans couleur nouvelle. */
+.dot.waiting{background:transparent;box-shadow:inset 0 0 0 2.5px var(--mustard)}
+.node.waiting rect.box{fill:var(--section);stroke:var(--mustard);stroke-width:2.5;stroke-dasharray:6 4}
+.node.waiting .tag{fill:var(--accent-text)}
+.counts{grid-template-columns:repeat(5,minmax(0,1fr))}
+.count span{font-size:11.5px;line-height:1.2}
+.c-waiting{background:var(--section);color:var(--accent-text);box-shadow:inset 0 0 0 2px var(--mustard)}
+.kanban{grid-auto-columns:minmax(196px,1fr)}
+.kcol.st-waiting{border-top:4px dashed var(--mustard)}
+.kcard.waiting{background:var(--section);border-left-color:var(--mustard);border-left-style:dashed}
+.kcard.waiting .ktag{color:var(--accent-text)}
+.kwait{font-size:12.5px;font-weight:700;color:var(--accent-text)}
+.spill.waiting{background:transparent;color:var(--accent-text);box-shadow:inset 0 0 0 1.5px var(--mustard)}
+.tchip.waiting{border-style:dashed;border-color:var(--mustard)}
+.tmeta.twait{color:var(--accent-text);font-weight:700}
+.tbl .wait-in{display:block;margin-top:4px;width:100%;font-size:12.5px;color:var(--accent-text);font-weight:700}
+.seg:has(> :nth-child(4)){grid-template-columns:repeat(4,1fr)}
+.seg:has(> :nth-child(4)) button{padding:6px 4px;font-size:12.5px}
+.count{padding:8px 7px}
+.count span{font-size:11px;white-space:nowrap}
+.kanban{grid-auto-columns:minmax(180px,1fr)}
