@@ -3,16 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Graphe de tâches</title>
+<title>Todo Dog</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
 <div class="app">
   <header>
     <div class="proj">
-      <div class="eyebrow">Projet · tâches et dépendances</div>
+      <div class="brand">
+        <svg class="logo-light" viewBox="0 0 200 200" aria-hidden="true"> <rect width="200" height="200" rx="46" fill="#FFF8EC"></rect> <rect x="1.5" y="1.5" width="197" height="197" rx="45" fill="none" stroke="#E7DDC9" stroke-width="3"></rect> <g fill="#1F2A44"> <ellipse cx="60" cy="84" rx="14.5" ry="18.5" transform="rotate(-22 60 84)"></ellipse> <ellipse cx="86" cy="60" rx="14.5" ry="19.5" transform="rotate(-6 86 60)"></ellipse> <ellipse cx="114" cy="60" rx="14.5" ry="19.5" transform="rotate(6 114 60)"></ellipse> <ellipse cx="140" cy="84" rx="14.5" ry="18.5" transform="rotate(22 140 84)"></ellipse> <path d="M100 98 C127 98 147 118 147 139 C147 157 133 163 121 161 C112 160 106 155 100 155 C94 155 88 160 79 161 C67 163 53 157 53 139 C53 118 73 98 100 98 Z"></path> </g> <path d="M80 131 L95 145 L122 117" fill="none" stroke="#F2B33D" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path> </svg>
+        <svg class="logo-dark" viewBox="0 0 200 200" aria-hidden="true"> <rect width="200" height="200" rx="46" fill="#1F2A44"></rect> <g fill="#FFF8EC"> <ellipse cx="60" cy="84" rx="14.5" ry="18.5" transform="rotate(-22 60 84)"></ellipse> <ellipse cx="86" cy="60" rx="14.5" ry="19.5" transform="rotate(-6 86 60)"></ellipse> <ellipse cx="114" cy="60" rx="14.5" ry="19.5" transform="rotate(6 114 60)"></ellipse> <ellipse cx="140" cy="84" rx="14.5" ry="18.5" transform="rotate(22 140 84)"></ellipse> <path d="M100 98 C127 98 147 118 147 139 C147 157 133 163 121 161 C112 160 106 155 100 155 C94 155 88 160 79 161 C67 163 53 157 53 139 C53 118 73 98 100 98 Z"></path> </g> <path d="M80 131 L95 145 L122 117" fill="none" stroke="#1F2A44" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path> <circle cx="152" cy="48" r="12" fill="#F2B33D"></circle> </svg>
+        <span class="wordmark" role="img" aria-label="Todo Dog">todo<b>dog</b></span>
+        <span class="eyebrow">Projets et dépendances</span>
+      </div>
       <div class="proj-row">
         <button class="btn proj-btn" id="projBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="projMenu">
           Projets <b id="projCount"></b> <span aria-hidden="true">▾</span>
@@ -61,7 +67,7 @@
           <div><label class="label" for="newOwner">Responsable</label><input id="newOwner" type="text" list="ownerList" placeholder="Nom" autocomplete="off"></div>
           <div><label class="label" for="newDue">Échéance</label><input id="newDue" type="date"></div>
         </div>
-        <div class="row"><span></span><button class="btn primary" type="submit">Ajouter la tâche</button></div>
+        <div class="row"><span></span><button class="btn primary" type="submit">Ajouter une tâche</button></div>
       </form>
       <datalist id="ownerList"></datalist>
       <p class="hint" id="addHint">Si une tâche est sélectionnée, la nouvelle en dépendra.</p>
