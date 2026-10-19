@@ -71,6 +71,7 @@ const owners = () => [...new Set(T().map(t => (t.owner || '').trim()).filter(Boo
 const mine = t => !who || (t.owner || '') === who;
 // Prérequis dont l'échéance tombe après celle de la tâche : planning incohérent
 const lateDeps = t => t.due ? t.deps.map(byId).filter(d => d && d.due && d.status !== 'done' && d.due > t.due) : [];
+const DONE_ICO = '<span class="done-ico" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.2 2.1 4.8-4.8" fill="none" stroke="#1f2a44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
 const LABEL = {ready:'PRÊTE', doing:'EN COURS', blocked:'BLOQUÉE', done:'FAITE'};
 // Jalon : point de passage daté (pas de durée, pas d'état « en cours »)
 const isMs = t => t.type === 'milestone';
@@ -132,7 +133,7 @@ async function pushServer(){
     } else if (r.status === 409){
       store.version = j.version; data = j.data; store.dirty = false; store.again = false;
       refreshAll();
-      setSync("Modifié entre-temps par quelqu'un d'autre : version du serveur rechargée.", true);
+      setSync("Quelqu'un a modifié ce projet entre-temps : sa version a été rechargée.", true);
     } else if (!r.ok){
       throw new Error(j.error || 'HTTP ' + r.status);
     } else {
@@ -141,7 +142,7 @@ async function pushServer(){
       setSync('Enregistré sur le serveur');
     }
   } catch(e){
-    setSync("Échec de l'enregistrement (" + e.message + '), nouvel essai dans 5 s…', true);
+    setSync("La modification n'a pas été enregistrée (" + e.message + '). Nouvel essai dans 5 s…', true);
     clearTimeout(store.timer);
     store.timer = setTimeout(pushServer, 5000);
   } finally {
@@ -183,7 +184,7 @@ async function createProject(d){
   if (store.mode === 'server'){
     const r = await fetch('api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
     const j = await r.json().catch(() => ({}));
-    if (!r.ok){ setSync('Création impossible : ' + (j.error || 'HTTP ' + r.status), true); return; }
+    if (!r.ok){ setSync('Le projet n’a pas été créé : ' + (j.error || 'HTTP ' + r.status), true); return; }
     id = j.id;
   } else {
     id = newId(); ldb.projects[id] = d; lsSet(LKEY, JSON.stringify(ldb));
@@ -194,7 +195,7 @@ async function createProject(d){
 async function deleteProject(id){
   if (store.mode === 'server'){
     const r = await fetch('api/projects/' + id, { method: 'DELETE' });
-    if (!r.ok && r.status !== 404){ setSync('Suppression impossible (HTTP ' + r.status + ').', true); return; }
+    if (!r.ok && r.status !== 404){ setSync('Le projet n’a pas été supprimé (HTTP ' + r.status + '). Réessaie.', true); return; }
     if (id === store.id){ store.dirty = false; clearTimeout(store.timer); }
   } else {
     delete ldb.projects[id]; lsSet(LKEY, JSON.stringify(ldb));
@@ -209,7 +210,7 @@ async function deleteProject(id){
 async function projectGone(){
   await refreshList();
   if (store.list.length) await openProject(store.list[0].id); else await createProject(blankProject());
-  setSync("Le projet que vous consultiez a été supprimé par quelqu'un d'autre.", true);
+  setSync("Le projet que tu consultais a été supprimé par quelqu'un d'autre.", true);
 }
 // Récupère les modifications des autres utilisateurs (sauf pendant une saisie)
 async function poll(){
@@ -381,7 +382,7 @@ function drawGraph(){
   const svg = document.getElementById('g');
   const tasks = visible();
   if (!tasks.length){ svg.setAttribute('width', 420); svg.setAttribute('height', 120); svg.removeAttribute('viewBox');
-    svg.innerHTML = `<text x="28" y="60" class="title" style="fill:var(--muted);font:14px var(--f-ui)">${T().length ? 'Toutes les tâches sont faites (masquées).' : 'Aucune tâche. Ajoutez-en une à gauche.'}</text>`; lastL = null; return; }
+    svg.innerHTML = `<text x="28" y="60" class="title" style="fill:var(--muted);font:14px var(--f-ui)">${T().length ? 'Tout est fait. Profite de la balade.' : 'Rien à faire pour l’instant. Ajoute une tâche à gauche.'}</text>`; lastL = null; return; }
   const L = lastL = layout(tasks), {xy, w, h} = L;
   const anc = selected ? ancestors(selected) : new Set(), desc = selected ? descendants(selected) : new Set();
   const chain = selected ? new Set([selected, ...anc, ...desc]) : null;
@@ -418,13 +419,14 @@ function drawGraph(){
     const shape = zoom === 'month'
       ? (ms ? `<path class="box" d="M${NW} ${-3} L${NW + 10} ${NH / 2} L${NW} ${NH + 3} L${NW - 10} ${NH / 2} Z"/>` : `<rect class="box" width="${NW}" height="${NH}" rx="${NH / 2}"/>`)
       : ms ? `<path class="halo" d="${flag(5)}"/><path class="box" d="${flag(0)}"/>`
-                     : `<rect class="halo" x="-5" y="-5" width="${NW+10}" height="${NH+10}" rx="${zoom === 'month' ? 8 : 12}"/><rect class="box" width="${NW}" height="${NH}" rx="${zoom === 'month' ? 5 : 8}"/>`;
+                     : `<rect class="halo" x="-5" y="-5" width="${NW+10}" height="${NH+10}" rx="${zoom === 'month' ? 10 : 18}"/><rect class="box" width="${NW}" height="${NH}" rx="${zoom === 'month' ? 7 : 14}"/>`;
     let body;
     if (zoom === 'day'){
       const lines = wrap(t.title, ms ? 22 : 25);
       const ownTxt = own ? (own.length > 14 ? own.slice(0, 13) + '…' : own) : 'Non assignée';
-      body = `<text class="tag" x="12" y="17">${tagTxt(t, s)}</text>
-      ${ms ? '' : `<text class="num" x="${NW-12}" y="17" text-anchor="end">#${t.id}</text>`}
+      const ck = s === 'done' ? `<g class="done-check" transform="translate(${NW - 26} 6)"><circle cx="8" cy="8" r="8"/><path d="M4.5 8.2l2.3 2.2 4.7-4.8" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></g>` : '';
+      body = `${ck}<text class="tag" x="12" y="17">${tagTxt(t, s)}</text>
+      ${ms ? '' : `<text class="num" x="${s === 'done' ? NW - 32 : NW - 12}" y="17" text-anchor="end">#${t.id}</text>`}
       ${lines.map((l,i) => `<text class="title" x="12" y="${lines.length === 1 ? 41 : 36 + i*16}">${esc(l)}</text>`).join('')}
       <line class="sep" x1="12" x2="${R}" y1="${NH-22}" y2="${NH-22}"/>
       <text class="meta ${own ? '' : 'none'}" x="12" y="${NH-8}">${esc(ownTxt)}</text>
@@ -522,7 +524,7 @@ function kcard(t){
   return `<article class="${cls}" data-id="${t.id}" draggable="true" tabindex="0" role="button"
       aria-label="${isMs(t) ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(t.owner || 'non assignée')}, ${esc(di.txt)}">
     <div class="khead"><span class="ktag">${tagTxt(t, s)}</span><span class="knum">#${t.id}</span></div>
-    <div class="ktitle">${esc(t.title)}</div>
+    <div class="ktitle">${s === 'done' ? DONE_ICO : ''}${esc(t.title)}</div>
     ${t.description ? `<p class="kdesc">${esc(t.description)}</p>` : ''}
     ${blockers.length && s !== 'done' ? `<div class="kblock">Attend : ${blockers.map(b => esc(b.title)).join(', ')}</div>` : ''}
     <div class="kmeta">
@@ -551,8 +553,8 @@ function drawKanban(){
       <div class="klist">${c.tasks.length ? c.tasks.map(kcard).join('') : empty(c)}</div>
     </section>`).join('');
   document.getElementById('kbHelp').textContent = group === 'status'
-    ? 'Glissez une carte vers une autre colonne pour changer son statut. Une tâche bloquée ne peut pas passer en cours tant que ses prérequis ne sont pas faits.'
-    : 'Glissez une carte vers une autre colonne pour changer de responsable. Pour une nouvelle personne, saisissez son nom dans la fiche de la tâche.';
+    ? 'Glisse une carte dans une autre colonne pour changer son statut. Une tâche bloquée ne passe en cours qu’une fois ses prérequis faits.'
+    : 'Glisse une carte dans une autre colonne pour changer de responsable. Pour une nouvelle personne, saisis son nom dans la fiche de la tâche.';
 }
 // Déplacer une carte : renvoie un message d'erreur si le déplacement est impossible
 function moveTo(t, key){
@@ -563,7 +565,7 @@ function moveTo(t, key){
   }
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
   if (key === 'doing' && isMs(t))
-    return `« ${t.title} » est un jalon : il n'a pas d'état « en cours ». Glissez-le dans Faites quand il est atteint.`;
+    return `« ${t.title} » est un jalon : il n'a pas d'état « en cours ». Glisse-le dans Faites quand il est atteint.`;
   if ((key === 'doing' || key === 'done') && blockers.length)
     return `« ${t.title} » attend encore : ${blockers.map(b => b.title).join(', ')}.`;
   if (key === 'ready' && blockers.length)
@@ -690,7 +692,7 @@ function trow(t){
     <td class="c-desc"><textarea data-f="description" rows="1" aria-label="Description de la tâche ${t.id}" placeholder="—">${esc(t.description || '')}</textarea></td>
     <td class="c-status">
       <select data-f="status" aria-label="Statut de la tâche ${t.id}">${statusOpts.join('')}</select>
-      <span class="spill ${s}">${esc(lbl(t, s).toLowerCase())}</span>
+      <span class="spill ${s}">${s === 'done' ? DONE_ICO : ''}${esc(lbl(t, s).toLowerCase())}</span>
     </td>
     <td class="c-owner"><input type="text" data-f="owner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" aria-label="Responsable de la tâche ${t.id}"></td>
     <td class="c-due"><input type="date" data-f="due" value="${esc(t.due || '')}" class="${di.cls}" aria-label="Échéance de la tâche ${t.id}">
@@ -721,7 +723,7 @@ function drawTable(){
     </table></div>
     <div class="tbl-foot">
       <button type="button" class="btn" data-addrow>+ Ajouter une ligne</button>
-      <span class="muted">${rows.length === total ? `${total} tâche${total > 1 ? 's' : ''}` : `${rows.length} affichée${rows.length > 1 ? 's' : ''} sur ${total}`} · cliquez sur un en-tête pour trier</span>
+      <span class="muted">${rows.length === total ? `${total} tâche${total > 1 ? 's' : ''}` : `${rows.length} affichée${rows.length > 1 ? 's' : ''} sur ${total}`} · clique sur un en-tête pour trier</span>
     </div>`;
   const sc = el.querySelector('.tbl-scroll'); sc.scrollLeft = sx; sc.scrollTop = sy;
   if (keep){
@@ -745,7 +747,7 @@ function applyCell(t, f, v){
   }
   if (f === 'adddep' && v){
     const d = +v;
-    if (wouldCycle(t.id, d)) return 'Impossible : cette dépendance créerait un cycle.';
+    if (wouldCycle(t.id, d)) return 'Cette dépendance créerait une boucle : elle n’a pas été ajoutée.';
     if (!t.deps.includes(d)) t.deps.push(d);
     if (t.status !== 'todo' && byId(d).status !== 'done') t.status = 'todo';   // un nouveau prérequis non fait bloque la tâche
     return null;
@@ -862,20 +864,20 @@ function renderSide(){
   document.getElementById('nDoing').textContent = doing.length;
   document.getElementById('readyList').innerHTML = ready.length
     ? ready.map(t => listItem(t, isMs(t) ? `<button class="btn" data-act="finish" data-id="${t.id}">Atteint</button>` : `<button class="btn" data-act="start" data-id="${t.id}">Démarrer</button>`)).join('')
-    : `<p class="empty">${total && done === total ? 'Tout est terminé.' : 'Rien de disponible : terminez une tâche en cours.'}</p>`;
+    : `<p class="empty">${total && done === total ? 'Tout est fait. Profite de la balade.' : 'Rien à démarrer pour l’instant : termine une tâche en cours.'}</p>`;
   document.getElementById('doingList').innerHTML = doing.length
     ? doing.map(t => listItem(t, `<button class="btn" data-act="finish" data-id="${t.id}">Terminer</button>`)).join('')
     : `<p class="empty">Aucune tâche en cours.</p>`;
   document.getElementById('addHint').textContent = selected && byId(selected)
     ? `La nouvelle tâche dépendra de « ${byId(selected).title} ».`
-    : 'Astuce : sélectionnez d\'abord une tâche pour que la nouvelle en dépende.';
+    : 'Astuce : sélectionne d\'abord une tâche pour que la nouvelle en dépende.';
   renderDetail();
 }
 
 function renderDetail(){
   const el = document.getElementById('detail');
   const t = selected && byId(selected);
-  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Cliquez une tâche dans le graphe ou le Kanban pour la modifier et gérer ses dépendances.</p>`; return; }
+  if (!t){ el.innerHTML = `<h2>Tâche sélectionnée</h2><p class="empty">Clique sur une tâche pour la modifier et gérer ses dépendances.</p>`; return; }
   const s = state(t);
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
   const canProgress = blockers.length === 0;
@@ -903,7 +905,7 @@ function renderDetail(){
       <button data-st="doing" aria-pressed="${t.status==='doing'}" ${!canProgress && t.status!=='doing' ? 'disabled' : ''}>En cours</button>
       <button data-st="done" aria-pressed="${t.status==='done'}" ${!canProgress && t.status!=='done' ? 'disabled' : ''}>Faite</button>
     </div>`}
-    ${isMs(t) && !t.due ? `<p class="hint warn">Donnez une date à ce jalon pour le placer sur l'axe de temps.</p>` : ''}
+    ${isMs(t) && !t.due ? `<p class="hint warn">Donne une date à ce jalon pour le placer sur l'axe de temps.</p>` : ''}
     ${blockers.length ? `<p class="hint warn">${isMs(t) ? 'Atteint quand ces tâches seront faites' : 'Bloquée par'} : ${blockers.map(b => esc(b.title)).join(', ')}.</p>` : ''}
     <div class="label">Dépend de</div>
     <div class="chips">${t.deps.length ? t.deps.map(byId).filter(Boolean).map(d =>

@@ -1,5 +1,7 @@
 # Graphe de tâches (gestion-todo-dag)
 
+> Interface aux couleurs de la charte **Todo Dog** (« Toutes les tâches, bien dressées. ») : moutarde, bleu nuit et crème, polices Fredoka (titres) et Nunito (texte), formes arrondies, logo « patte validée » (`public/icon-light.svg`, `public/icon-dark.svg`, `public/favicon.svg`), textes au tutoiement. Modes clair et sombre selon le réglage du système.
+
 Gestion de tâches de projet sous forme de **graphe de dépendances (DAG)**.
 
 - Vue graphe posée sur un axe de temps : le bord droit de chaque activité tombe sur son échéance, avec la date du jour repérée. Les activités qui se chevauchent sont empilées, celles sans échéance sont placées à droite.

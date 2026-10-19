@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 200 200" role="img" aria-label="Todo Dog">
+  <rect width="200" height="200" rx="46" fill="#FFF8EC"></rect>
+  <rect x="1.5" y="1.5" width="197" height="197" rx="45" fill="none" stroke="#E7DDC9" stroke-width="3"></rect>
+  <g fill="#1F2A44">
+    <ellipse cx="60" cy="84" rx="14.5" ry="18.5" transform="rotate(-22 60 84)"></ellipse>
+    <ellipse cx="86" cy="60" rx="14.5" ry="19.5" transform="rotate(-6 86 60)"></ellipse>
+    <ellipse cx="114" cy="60" rx="14.5" ry="19.5" transform="rotate(6 114 60)"></ellipse>
+    <ellipse cx="140" cy="84" rx="14.5" ry="18.5" transform="rotate(22 140 84)"></ellipse>
+    <path d="M100 98 C127 98 147 118 147 139 C147 157 133 163 121 161 C112 160 106 155 100 155 C94 155 88 160 79 161 C67 163 53 157 53 139 C53 118 73 98 100 98 Z"></path>
+  </g>
+  <path d="M80 131 L95 145 L122 117" fill="none" stroke="#F2B33D" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
