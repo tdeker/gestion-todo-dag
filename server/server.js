@@ -65,7 +65,7 @@ function persist() {
   return writing;
 }
 
-const STATUSES = new Set(['todo', 'doing', 'done']);
+const STATUSES = new Set(['todo', 'doing', 'waiting', 'done']);
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function validate(p) {
@@ -82,7 +82,8 @@ function validate(p) {
     if (!Array.isArray(t.deps) || !t.deps.every(Number.isInteger)) return `Dépendances invalides (tâche #${t.id}).`;
     if (t.owner != null && (typeof t.owner !== 'string' || t.owner.length > 100)) return `Responsable invalide (tâche #${t.id}).`;
     if (t.type != null && t.type !== 'task' && t.type !== 'milestone') return `Type invalide (tâche #${t.id}).`;
-    if (t.type === 'milestone' && t.status === 'doing') return `Un jalon ne peut pas être « en cours » (tâche #${t.id}).`;
+    if (t.type === 'milestone' && (t.status === 'doing' || t.status === 'waiting')) return `Un jalon ne peut pas être « en cours » ni « en attente » (tâche #${t.id}).`;
+    if (t.waitFor != null && (typeof t.waitFor !== 'string' || t.waitFor.length > 200)) return `Motif d'attente invalide (tâche #${t.id}, 200 caractères max).`;
     if (t.description != null && (typeof t.description !== 'string' || t.description.length > 5000)) return `Description invalide ou trop longue (tâche #${t.id}, 5000 caractères max).`;
     if (t.due != null && t.due !== '' && !DATE_RE.test(t.due)) return `Échéance invalide (tâche #${t.id}).`;
   }

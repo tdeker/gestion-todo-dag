@@ -28,7 +28,7 @@ const SAMPLE = {
     {id:4, title:'Rédaction des contenus', status:'todo', deps:[1], owner:'Sophie', due:inDays(-1), description:'Textes des 4 pages, relus par la communication. Prévoir les mentions légales.'},
     {id:5, title:'Charte graphique', status:'todo', deps:[3], owner:'Mehdi', due:inDays(6)},
     {id:6, title:'Intégration HTML/CSS', status:'todo', deps:[3,5], owner:'Lucas', due:inDays(5), description:'Gabarits responsive à partir des maquettes validées et de la charte.'},
-    {id:7, title:'Configuration du DNS', status:'todo', deps:[2], owner:'Lucas', due:inDays(4)},
+    {id:7, title:'Configuration du DNS', status:'waiting', waitFor:'Accès au registrar (DSI)', deps:[2], owner:'Lucas', due:inDays(4)},
     {id:8, title:'Intégration des contenus', status:'todo', deps:[4,6], owner:'Sophie', due:inDays(16)},
     {id:9, title:'Recette', status:'todo', deps:[7,8], owner:'Claire', due:inDays(20), description:'Tests sur Chrome, Safari et Firefox, mobile compris. Formulaire de contact à vérifier.'},
     {id:10, title:'Mise en ligne', status:'todo', type:'milestone', deps:[9], owner:'Claire', due:inDays(23), description:'Bascule DNS, vérification du certificat HTTPS, annonce interne.'}
@@ -72,12 +72,14 @@ const mine = t => !who || (t.owner || '') === who;
 // Prérequis dont l'échéance tombe après celle de la tâche : planning incohérent
 const lateDeps = t => t.due ? t.deps.map(byId).filter(d => d && d.due && d.status !== 'done' && d.due > t.due) : [];
 const DONE_ICO = '<span class="done-ico" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M2.5 6.2l2.2 2.1 4.8-4.8" fill="none" stroke="#1f2a44" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>';
-const LABEL = {ready:'PRÊTE', doing:'EN COURS', blocked:'BLOQUÉE', done:'FAITE'};
+const LABEL = {ready:'PRÊTE', doing:'EN COURS', waiting:'EN ATTENTE', blocked:'BLOQUÉE', done:'FAITE'};
 // Jalon : point de passage daté (pas de durée, pas d'état « en cours »)
 const isMs = t => t.type === 'milestone';
-const MS_LABEL = {ready:'ATTEIGNABLE', doing:'ATTEIGNABLE', blocked:'EN ATTENTE', done:'ATTEINT'};
+const MS_LABEL = {ready:'ATTEIGNABLE', doing:'ATTEIGNABLE', waiting:'ATTEIGNABLE', blocked:'BLOQUÉ', done:'ATTEINT'};
 const lbl = (t, s = state(t)) => isMs(t) ? MS_LABEL[s] : LABEL[s];
-const tagTxt = (t, s) => isMs(t) ? '◆ JALON · ' + MS_LABEL[s] : LABEL[s];
+const tagTxt = (t, s) => isMs(t) ? '◆ JALON · ' + MS_LABEL[s] : s === 'waiting' ? '‖ ' + LABEL[s] : LABEL[s];
+// « En attente » : tâche démarrable mais suspendue par un élément extérieur (réponse, livraison, validation…)
+const waitTxt = t => t.status === 'waiting' && (t.waitFor || '').trim() ? `En attente de : ${t.waitFor.trim()}` : '';
 
 const blankProject = (name = 'Nouveau projet') => ({ name, seq: 1, tasks: [] });
 let data = blankProject();
@@ -260,6 +262,7 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>'
 function state(t){
   if (t.status === 'done') return 'done';
   if (t.status === 'doing' && !isMs(t)) return 'doing';
+  if (t.status === 'waiting' && !isMs(t)) return 'waiting';
   return t.deps.every(d => byId(d)?.status === 'done') ? 'ready' : 'blocked';
 }
 function ancestors(id){ const acc = new Set(), st = [id];
@@ -291,7 +294,7 @@ function matches(t){
   if (!query) return true;
   const q = norm(query).trim();
   if (/^#?\d+$/.test(q)) return String(t.id) === q.replace('#', '');
-  return norm(t.title + ' ' + (t.description || '') + ' ' + (t.owner || '')).includes(q);
+  return norm(t.title + ' ' + (t.description || '') + ' ' + (t.owner || '') + ' ' + (t.waitFor || '')).includes(q);
 }
 
 function layout(tasks){
@@ -442,7 +445,7 @@ function drawGraph(){
       body = ms ? `<text class="ms-lbl" x="${-6}" y="${NH / 2 + 4}" text-anchor="end">${esc(wrap(t.title, 22, 1)[0])}</text>` : '';
     }
     out += `<g class="${cls}" data-id="${t.id}" transform="translate(${x} ${y})" tabindex="0" role="button" aria-label="${ms ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(own || 'non assignée')}, ${esc(di.txt)}">
-      <title>${ms ? 'Jalon : ' : ''}${esc(t.title)} — ${esc(own || 'non assignée')}, ${esc(di.txt)}${t.description ? '\n\n' + esc(t.description) : ''}</title>
+      <title>${ms ? 'Jalon : ' : ''}${esc(t.title)} — ${esc(own || 'non assignée')}, ${esc(di.txt)}${waitTxt(t) ? '\n' + esc(waitTxt(t)) : ''}${t.description ? '\n\n' + esc(t.description) : ''}</title>
       ${shape}${body}
     </g>`;
   }
@@ -476,7 +479,7 @@ function applyPendingScroll(){
    ou par personne (glisser = changer de responsable). */
 // Tri de la vue Tableau (déclaré ici car relu avec les préférences)
 let tSort = { key: 'due', dir: 1 };
-const STATUS_TXT = { todo: 'À faire', doing: 'En cours', done: 'Faite' };
+const STATUS_TXT = { todo: 'À faire', doing: 'En cours', waiting: 'En attente', done: 'Faite' };
 const MS_STATUS_TXT = { todo: 'À venir', done: 'Atteint' };
 const SORTS = {
   id:     t => t.id,
@@ -499,7 +502,7 @@ try {
   hideDone = !!v.hideDone;
 } catch(e){}
 const saveUi = () => lsSet(UI_KEY, JSON.stringify({ view, group, zoom, hideDone, tSort }));
-const ORDER = { doing: 0, ready: 1, blocked: 2, done: 3 };
+const ORDER = { doing: 0, waiting: 1, ready: 2, blocked: 3, done: 4 };
 const byDueId = (a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.id - b.id;
 const initials = n => n.split(/[\s-]+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 
@@ -508,6 +511,7 @@ function kanbanCols(){
     { key: 'blocked', label: 'Bloquées', dot: 'blocked', hint: 'En attente de prérequis' },
     { key: 'ready',   label: 'Prêtes',   dot: 'ready',   hint: 'Peuvent démarrer' },
     { key: 'doing',   label: 'En cours', dot: 'doing' },
+    { key: 'waiting', label: 'En attente', dot: 'waiting', hint: 'Suspendues : on attend quelque chose' },
     { key: 'done',    label: 'Faites',   dot: 'done' }
   ].map(c => ({ ...c, tasks: visible().filter(t => state(t) === c.key).sort(byDueId) }));
   const sortOwner = (a, b) => ORDER[state(a)] - ORDER[state(b)] || byDueId(a, b);
@@ -525,6 +529,7 @@ function kcard(t){
       aria-label="${isMs(t) ? 'Jalon ' : ''}${esc(t.title)} : ${lbl(t, s).toLowerCase()}, ${esc(t.owner || 'non assignée')}, ${esc(di.txt)}">
     <div class="khead"><span class="ktag">${tagTxt(t, s)}</span><span class="knum">#${t.id}</span></div>
     <div class="ktitle">${s === 'done' ? DONE_ICO : ''}${esc(t.title)}</div>
+    ${waitTxt(t) ? `<div class="kwait">${esc(waitTxt(t))}</div>` : ''}
     ${t.description ? `<p class="kdesc">${esc(t.description)}</p>` : ''}
     ${blockers.length && s !== 'done' ? `<div class="kblock">Attend : ${blockers.map(b => esc(b.title)).join(', ')}</div>` : ''}
     <div class="kmeta">
@@ -564,6 +569,10 @@ function moveTo(t, key){
     t.owner = owner; return null;
   }
   const blockers = t.deps.map(byId).filter(d => d && d.status !== 'done');
+  if (key === 'waiting' && isMs(t))
+    return `« ${t.title} » est un jalon : il ne peut pas être mis en attente.`;
+  if (key === 'waiting' && blockers.length)
+    return `« ${t.title} » est déjà bloquée par ses prérequis : ${blockers.map(b => b.title).join(', ')}.`;
   if (key === 'doing' && isMs(t))
     return `« ${t.title} » est un jalon : il n'a pas d'état « en cours ». Glisse-le dans Faites quand il est atteint.`;
   if ((key === 'doing' || key === 'done') && blockers.length)
@@ -572,7 +581,7 @@ function moveTo(t, key){
     return `« ${t.title} » ne peut pas être prête : ses prérequis ne sont pas faits.`;
   if (key === 'blocked' && !blockers.length)
     return `« ${t.title} » n'a aucun prérequis en attente : elle ne peut pas être bloquée.`;
-  t.status = key === 'doing' ? 'doing' : key === 'done' ? 'done' : 'todo';
+  t.status = key === 'doing' ? 'doing' : key === 'done' ? 'done' : key === 'waiting' ? 'waiting' : 'todo';
   return null;
 }
 function drawMain(){ if (view === 'kanban') drawKanban(); else if (view === 'table') drawTable(); else drawGraph(); }
@@ -693,6 +702,7 @@ function trow(t){
     <td class="c-status">
       <select data-f="status" aria-label="Statut de la tâche ${t.id}">${statusOpts.join('')}</select>
       <span class="spill ${s}">${s === 'done' ? DONE_ICO : ''}${esc(lbl(t, s).toLowerCase())}</span>
+      ${t.status === 'waiting' && !ms ? `<input type="text" data-f="waitFor" class="wait-in" value="${esc(t.waitFor || '')}" placeholder="En attente de…" aria-label="Motif d'attente de la tâche ${t.id}">` : ''}
     </td>
     <td class="c-owner"><input type="text" data-f="owner" list="ownerList" value="${esc(t.owner || '')}" placeholder="Non assignée" aria-label="Responsable de la tâche ${t.id}"></td>
     <td class="c-due"><input type="date" data-f="due" value="${esc(t.due || '')}" class="${di.cls}" aria-label="Échéance de la tâche ${t.id}">
@@ -735,9 +745,10 @@ function applyCell(t, f, v){
   if (f === 'title'){ t.title = v.trim() || 'Sans titre'; return null; }
   if (f === 'description'){ t.description = v; return null; }
   if (f === 'owner'){ t.owner = v.trim(); return null; }
+  if (f === 'waitFor'){ t.waitFor = v.trim(); return null; }
   if (f === 'due'){ t.due = v; return null; }
   if (f === 'type'){
-    if (v === 'milestone'){ t.type = 'milestone'; if (t.status === 'doing') t.status = 'todo'; } else delete t.type;
+    if (v === 'milestone'){ t.type = 'milestone'; if (t.status === 'doing' || t.status === 'waiting') t.status = 'todo'; } else delete t.type;
     return null;
   }
   if (f === 'status'){
@@ -819,14 +830,18 @@ tblEl.addEventListener('click', e => {
 });
 
 /* ---------- Panneau ---------- */
-function setStatus(id, st){ const t = byId(id); if (!t) return; t.status = st; commit(); }
+function setStatus(id, st){
+  const t = byId(id); if (!t) return;
+  t.status = st; commit();
+  if (st === 'waiting' && id === selected) document.getElementById('editWait')?.focus();
+}
 function select(id){ selected = selected === id ? null : id; render(); }
 
 function listItem(t, action){
   const s = state(t);
   const di = dueInfo(t);
   return `<li><i class="dot ${s} ${isMs(t) ? 'dia' : ''}"></i><div class="tbody"><span class="tname" data-sel="${t.id}">${isMs(t) ? '<span class="ms-pfx">Jalon</span> ' : ''}${esc(t.title)}</span>
-    <span class="tmeta">${esc(t.owner || 'Non assignée')} · <span class="${di.cls}">${esc(di.txt)}</span></span></div>${action}</li>`;
+    <span class="tmeta">${esc(t.owner || 'Non assignée')} · <span class="${di.cls}">${esc(di.txt)}</span></span>${waitTxt(t) ? `<span class="tmeta twait">${esc(waitTxt(t))}</span>` : ''}</div>${action}</li>`;
 }
 const byDue = (a, b) => (a.due || '9999') .localeCompare(b.due || '9999');
 
@@ -847,7 +862,7 @@ function renderSide(){
   document.getElementById('barFill').style.width = pct + '%';
   document.getElementById('pct').textContent = `${done}/${total} · ${pct} %`;
   document.getElementById('counts').innerHTML =
-    [['ready','Prêtes'],['doing','En cours'],['blocked','Bloquées'],['done','Faites']]
+    [['ready','Prêtes'],['doing','En cours'],['waiting','En attente'],['blocked','Bloquées'],['done','Faites']]
       .map(([k,l]) => `<div class="count c-${k}"><strong>${c(k)}</strong><span>${l}</span></div>`).join('');
   const late = T().filter(isLate).length;
   document.getElementById('lateCount').textContent = late ? `${late} en retard` : '';
@@ -865,6 +880,10 @@ function renderSide(){
   document.getElementById('readyList').innerHTML = ready.length
     ? ready.map(t => listItem(t, isMs(t) ? `<button class="btn" data-act="finish" data-id="${t.id}">Atteint</button>` : `<button class="btn" data-act="start" data-id="${t.id}">Démarrer</button>`)).join('')
     : `<p class="empty">${total && done === total ? 'Tout est fait. Profite de la balade.' : 'Rien à démarrer pour l’instant : termine une tâche en cours.'}</p>`;
+  const waiting = T().filter(t => state(t) === 'waiting' && mine(t)).sort(byDue);
+  document.getElementById('nWaiting').textContent = waiting.length;
+  document.getElementById('waitPanel').hidden = !waiting.length;
+  document.getElementById('waitList').innerHTML = waiting.map(t => listItem(t, `<button class="btn" data-act="start" data-id="${t.id}">Reprendre</button>`)).join('');
   document.getElementById('doingList').innerHTML = doing.length
     ? doing.map(t => listItem(t, `<button class="btn" data-act="finish" data-id="${t.id}">Terminer</button>`)).join('')
     : `<p class="empty">Aucune tâche en cours.</p>`;
@@ -903,8 +922,10 @@ function renderDetail(){
     </div>` : `<div class="seg" role="group" aria-label="Statut">
       <button data-st="todo" aria-pressed="${t.status==='todo'}">À faire</button>
       <button data-st="doing" aria-pressed="${t.status==='doing'}" ${!canProgress && t.status!=='doing' ? 'disabled' : ''}>En cours</button>
+      <button data-st="waiting" aria-pressed="${t.status==='waiting'}" ${!canProgress && t.status!=='waiting' ? 'disabled' : ''}>En attente</button>
       <button data-st="done" aria-pressed="${t.status==='done'}" ${!canProgress && t.status!=='done' ? 'disabled' : ''}>Faite</button>
     </div>`}
+    ${t.status === 'waiting' && !isMs(t) ? `<div class="field"><label class="label" for="editWait">En attente de…</label><input type="text" id="editWait" value="${esc(t.waitFor || '')}" placeholder="Ex. réponse du client, livraison, validation" autocomplete="off"></div>` : ''}
     ${isMs(t) && !t.due ? `<p class="hint warn">Donne une date à ce jalon pour le placer sur l'axe de temps.</p>` : ''}
     ${blockers.length ? `<p class="hint warn">${isMs(t) ? 'Atteint quand ces tâches seront faites' : 'Bloquée par'} : ${blockers.map(b => esc(b.title)).join(', ')}.</p>` : ''}
     <div class="label">Dépend de</div>
@@ -936,7 +957,7 @@ document.querySelector('aside').addEventListener('click', e => {
   const ty = e.target.closest('[data-type]');
   if (ty){
     const t = byId(selected);
-    if (ty.dataset.type === 'milestone'){ t.type = 'milestone'; if (t.status === 'doing') t.status = 'todo'; }
+    if (ty.dataset.type === 'milestone'){ t.type = 'milestone'; if (t.status === 'doing' || t.status === 'waiting') t.status = 'todo'; }
     else delete t.type;
     commit(); return;
   }
@@ -952,6 +973,7 @@ document.querySelector('aside').addEventListener('change', e => {
   if (e.target.id === 'addDep' && e.target.value){ byId(selected).deps.push(+e.target.value); commit(); }
   if (e.target.id === 'editOwner'){ byId(selected).owner = e.target.value.trim(); commit(); }
   if (e.target.id === 'editDue'){ byId(selected).due = e.target.value; commit(); }
+  if (e.target.id === 'editWait'){ byId(selected).waitFor = e.target.value.trim(); commit(); }
 });
 document.querySelector('aside').addEventListener('input', e => {
   if (e.target.id === 'editTitle'){ byId(selected).title = e.target.value || 'Sans titre'; save(); drawMain(); }
