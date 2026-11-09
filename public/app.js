@@ -713,8 +713,9 @@ function trow(t){
         <option value="">＋</option>${opts.map(o => `<option value="${o.id}">#${o.id} ${esc(o.title)}</option>`).join('')}
       </select></div></td>
     <td class="c-kids">${kids.length ? `<span title="${esc(kids.map(k => '#' + k.id + ' ' + k.title).join('\n'))}">${kids.length}</span>` : '<span class="muted">—</span>'}</td>
-    <td class="c-act"><button type="button" class="row-del" data-del="${t.id}" aria-label="Supprimer la tâche ${t.id}" title="Supprimer (touche Suppr)">
-      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></td>
+    <td class="c-act"><div class="row-acts"><button type="button" class="row-dup" data-dup="${t.id}" aria-label="Dupliquer la tâche ${t.id}" title="Dupliquer (Ctrl+D)">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M10.5 3.5v-.5A1.5 1.5 0 0 0 9 1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg></button><button type="button" class="row-del" data-del="${t.id}" aria-label="Supprimer la tâche ${t.id}" title="Supprimer (touche Suppr)">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></td>
   </tr>`;
 }
 function drawTable(){
@@ -816,6 +817,8 @@ tblEl.addEventListener('click', e => {
   if (g){ selected = +g.dataset.goto; render(); tblEl.querySelector(`tr[data-id="${g.dataset.goto}"]`)?.scrollIntoView({ block: 'center' }); return; }
   const d = e.target.closest('[data-del]');
   if (d){ deleteTask(+d.dataset.del); return; }
+  const dup = e.target.closest('[data-dup]');
+  if (dup){ duplicateTask(+dup.dataset.dup); return; }
   if (e.target.closest('[data-addrow]')){
     const id = data.seq++;
     T().push({ id, title: 'Nouvelle tâche', status: 'todo', deps: [], owner: '', due: '', description: '' });
@@ -937,7 +940,8 @@ function renderDetail(){
     </select>
     <div class="label">Débloque</div>
     <div class="chips">${kids.length ? kids.map(k => `<span class="chip" style="padding-right:9px"><i class="dot ${state(k)}"></i><span data-sel="${k.id}">${esc(k.title)}</span></span>`).join('') : '<span class="hint">Aucune tâche ne dépend de celle-ci.</span>'}</div>
-    <div class="row"><button class="btn" data-act="deselect">Fermer</button><span class="kbd-hint">ou touche <kbd>Suppr</kbd></span><button class="btn danger" data-act="delete">Supprimer</button></div>`;
+    <div class="row"><button class="btn" data-act="deselect">Fermer</button><span class="row-end"><button class="btn" data-act="duplicate" title="Dupliquer (Ctrl+D)">Dupliquer</button><button class="btn danger" data-act="delete" title="Supprimer (touche Suppr)">Supprimer</button></span></div>
+    <p class="kbd-hint">Raccourcis : <kbd>Ctrl</kbd>+<kbd>D</kbd> dupliquer · <kbd>Suppr</kbd> supprimer</p>`;
 }
 
 function render(){ syncView(); drawMain(); renderSide(); }
@@ -968,6 +972,7 @@ document.querySelector('aside').addEventListener('click', e => {
   if (act === 'finish') setStatus(+a.dataset.id, 'done');
   if (act === 'deselect'){ selected = null; render(); }
   if (act === 'delete') deleteTask(selected);
+  if (act === 'duplicate') duplicateTask(selected);
 });
 document.querySelector('aside').addEventListener('change', e => {
   if (e.target.id === 'addDep' && e.target.value){ byId(selected).deps.push(+e.target.value); commit(); }
@@ -1015,6 +1020,30 @@ function deleteTask(id){
   };
   showToast(`« ${t.title} » supprimée.`);
 }
+/* ---------- Duplication d'une tâche (bouton, ligne du tableau ou Ctrl+D), avec annulation ---------- */
+function duplicateTask(id){
+  const t = byId(id); if (!t) return;
+  const copy = clone(t), nid = data.seq++, pid = store.id;
+  copy.id = nid;
+  copy.title = (t.title + ' (copie)').slice(0, 300);
+  copy.deps = t.deps.filter(d => byId(d));          // mêmes prérequis ; les tâches qu'elle débloque ne sont pas modifiées
+  copy.status = 'todo';                              // la copie repart à zéro
+  delete copy.waitFor;
+  const i = T().indexOf(t);
+  T().splice(i + 1, 0, copy);
+  selected = nid; commit();
+  if (view === 'table') tblEl.querySelector(`tr[data-id="${nid}"]`)?.scrollIntoView({ block: 'nearest' });
+  else document.querySelector(`#g [data-id="${nid}"], .kcard[data-id="${nid}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  const ti = document.getElementById('editTitle'); if (ti && view !== 'table'){ ti.focus(); ti.select(); }
+  undo = () => {
+    if (store.id !== pid || !byId(nid)) return;
+    data.tasks = T().filter(x => x.id !== nid);
+    T().forEach(x => x.deps = x.deps.filter(d => d !== nid));
+    if (selected === nid) selected = id;
+    commit();
+  };
+  showToast(`« ${t.title} » dupliquée (#${nid}).`);
+}
 function showToast(text, canUndo = true){
   const el = document.getElementById('toast');
   el.querySelector('span').textContent = text;
@@ -1043,6 +1072,7 @@ document.addEventListener('keydown', e => {
   if ((e.key === 'Delete' || e.key === 'Backspace') && !e.ctrlKey && !e.metaKey && selected){
     e.preventDefault(); deleteTask(selected); return;
   }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'd' && selected){ e.preventDefault(); duplicateTask(selected); return; }
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z' && undo){ e.preventDefault(); runUndo(); }
 });
 
