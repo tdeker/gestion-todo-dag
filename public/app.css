@@ -347,7 +347,7 @@ svg[data-zoom=month] .node.sel rect.box,svg[data-zoom=month] .node.sel path.box{
 .tbl .c-title{position:sticky;left:52px;z-index:1;min-width:230px;box-shadow:1px 0 0 var(--line)}
 .tbl th.c-id,.tbl th.c-title{z-index:3}
 .tbl .c-id{min-width:52px} .tbl .c-type{min-width:112px} .tbl .c-desc{min-width:240px;width:22%} .tbl .c-status{min-width:200px} .tbl .c-owner{min-width:140px}
-.tbl .c-due{min-width:150px} .tbl .c-deps{min-width:300px} .tbl .c-kids{min-width:84px;text-align:center} .tbl .c-act{min-width:40px}
+.tbl .c-due{min-width:150px} .tbl .c-deps{min-width:300px} .tbl .c-kids{min-width:84px;text-align:center} .tbl .c-act{min-width:68px}
 .rownum{font:600 11.5px var(--f-mono);color:var(--muted);padding:0 6px;cursor:pointer}
 /* champs intégrés aux cellules : discrets jusqu'au survol ou à la saisie */
 .tbl input[type=text],.tbl input[type=date],.tbl select,.tbl textarea{border:1px solid transparent;background:transparent;border-radius:5px;padding:5px 6px;font-size:13px;min-height:0}
@@ -373,6 +373,11 @@ svg[data-zoom=month] .node.sel rect.box,svg[data-zoom=month] .node.sel path.box{
 .row-del{border:0;background:none;color:var(--muted);cursor:pointer;width:28px;height:28px;border-radius:6px;display:grid;place-items:center;opacity:.5}
 .tbl tr:hover .row-del,.row-del:focus-visible{opacity:1}
 .row-del:hover{color:var(--danger);background:var(--danger-soft)}
+.row-acts{display:flex;gap:2px}
+.row-dup{border:0;background:none;color:var(--muted);cursor:pointer;width:28px;height:28px;border-radius:6px;display:grid;place-items:center;opacity:.5}
+.tbl tr:hover .row-dup,.row-dup:focus-visible{opacity:1}
+.row-dup:hover{color:var(--ink);background:var(--ready-bg)}
+.row-end{display:flex;gap:8px;margin-left:auto}
 .empty-row td{padding:28px;text-align:center;color:var(--muted)}
 .tbl-foot{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:10px 14px;border-top:1px solid var(--line);font-size:12.5px}
 
